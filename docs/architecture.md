@@ -1,8 +1,8 @@
 # MVP architecture: evidence before guarantees
 
 Go is accepted. Build a small library with explicit data flow and a thin CLI,
-not an agent platform. The evidence schema/validator is the first implementation
-unit (#2); other components below remain planned, not implemented.
+not an agent platform. The evidence schema/validator (#2) and bounded static Go/npm discovery (#3)
+are library implementations; other components below remain planned.
 
 ## Component boundaries
 
