@@ -28,7 +28,7 @@ var secret = regexp.MustCompile(`(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-
 var relative = regexp.MustCompile(`^[^/\\:]+(/[^/\\:]+)*$`)
 
 func validPath(p string) bool {
-	return relative.MatchString(p) && path.Clean(p) == p && p != "." && !strings.HasPrefix(p, "../") && !secret.MatchString(p)
+	return len(p) <= 4096 && relative.MatchString(p) && path.Clean(p) == p && p != "." && !strings.HasPrefix(p, "../") && !secret.MatchString(p)
 }
 func validateOptions(o Options) error {
 	if len(o.Platforms) > 64 {
@@ -121,7 +121,7 @@ func Analyze(s discovery.Snapshot, o Options) ([]byte, error) {
 	total := 0
 	seen := map[string]bool{}
 	for _, d := range docs {
-		if !validPath(d.Path) || len(d.Path) > 4096 || seen[d.Path] {
+		if len(d.Path) > 4096 || !validPath(d.Path) || seen[d.Path] {
 			return nil, errors.New("invalid or ambiguous snapshot path")
 		}
 		seen[d.Path] = true
@@ -273,22 +273,28 @@ func Analyze(s discovery.Snapshot, o Options) ([]byte, error) {
 			if nonblocking(j.Settings["continue-on-error"]) {
 				b.finding("CIT_NON_BLOCKING", jid, "Job is configured as potentially non-blocking.", "DIRECT", scope, jr, "Not a mandatory merge guarantee.")
 			}
-			for _, st := range j.Steps {
-				sid := evidence.StableID("step", jid, st.ID, fmt.Sprint(st.Source.Line))
+			for ordinal, st := range j.Steps {
+				sid := evidence.StableID("step", jid, st.ID, fmt.Sprint(st.Source.Line), fmt.Sprint(st.Source.Column), fmt.Sprint(ordinal))
 				sscope := record{"kind": "STEP", "subject": sid}
 				sources := []discovery.Source{st.Source, st.RunValue.Source, st.Condition.Source, st.ContinueOnError.Source}
 				kind := ""
 				if safeStep(st) {
 					kind = literalKind(st.Run)
 				}
+				kinds := map[string][]discovery.Source{}
+				if kind != "" {
+					kinds[kind] = append([]discovery.Source(nil), sources...)
+				}
 				for _, l := range st.Links {
 					linked[l.CandidateID] = true
 					for _, c := range inv.Candidates {
 						if c.ID == l.CandidateID && c.State == "CONFIGURED" {
-							kind = strings.ToUpper(c.Kind)
+							leaf := append([]discovery.Source(nil), sources...)
 							for _, x := range l.Chain {
-								sources = append(sources, locate(x, docs))
+								leaf = append(leaf, locate(x, docs))
 							}
+							k := strings.ToUpper(c.Kind)
+							kinds[k] = append(kinds[k], leaf...)
 						}
 					}
 				}
@@ -301,15 +307,21 @@ func Analyze(s discovery.Snapshot, o Options) ([]byte, error) {
 				if strings.Contains(st.ContinueOnError.Raw, "${{") {
 					closed = false
 				}
-				if st.Uses != "" || strings.TrimSpace(st.Run) != "" && kind == "" {
+				if st.Uses != "" || strings.TrimSpace(st.Run) != "" && len(kinds) == 0 {
 					closed = false
 					b.finding("CIT_DYNAMIC_PATH", sid+"command", "Command/action internals are not a recognized literal validation path.", "UNKNOWN", sscope, sr, "Names, echo and unsupported wrappers establish no validation category.")
 				}
-				if kind != "" {
-					b.cap(sid+"-"+kind, "CONFIGURATION", "PRESENT", sscope, sr)
-					b.add("limitations", "Configured "+kind+" intent only within a source-backed step; no inferred category completeness.")
+				categories := []string{}
+				for k := range kinds {
+					categories = append(categories, k)
 				}
-				if kind == "TEST" && known {
+				sort.Strings(categories)
+				for _, k := range categories {
+					ref := b.ev(sid+"-"+k, "CONFIGURED", sscope, kinds[k], false)
+					b.cap(sid+"-"+k, "CONFIGURATION", "PRESENT", sscope, []string{ref})
+					b.add("limitations", "Configured "+k+" intent only within a source-backed step; no inferred category completeness.")
+				}
+				if _, test := kinds["TEST"]; test && known {
 					for _, p := range runners {
 						coverage[p] = true
 					}
@@ -495,6 +507,10 @@ func declaration(docs []discovery.Document, o Options) ([]string, []discovery.So
 		}
 		locs, err := jsonLocations(d)
 		if err != nil {
+			return nil, nil, false
+		}
+		var keys map[string]json.RawMessage
+		if json.Unmarshal(d.Content, &keys) != nil || len(keys) != 2 || keys["version"] == nil || keys["platforms"] == nil {
 			return nil, nil, false
 		}
 		var v struct {
