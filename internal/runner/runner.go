@@ -84,7 +84,7 @@ var imageID = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 func valid(p Plan) bool {
 	l := p.Limits
-	return regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(p.Snapshot) && p.Adapter == "owned-smoke-v1" && p.Tool == "owned-smoke-v1" && imageID.MatchString(p.Image) && p.Fixture == "smoke-v1" && p.Config == "owned-v1" && p.Effects == "owned fixture only; no host mounts; no network" && l.Wall > 0 && l.Wall <= time.Minute && l.MemoryBytes >= 16<<20 && l.MemoryBytes <= 1<<30 && l.CPUs >= 1 && l.CPUs <= 2 && l.PIDs >= 1 && l.PIDs <= 64 && l.OutputBytes >= 1 && l.OutputBytes <= 1<<20 && l.ScratchBytes >= 1 && l.ScratchBytes <= 64<<20
+	return regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(p.Snapshot) && p.Adapter == "owned-smoke-v1" && p.Tool == "owned-smoke-v1" && imageID.MatchString(p.Image) && p.Fixture == "smoke-v1" && (p.Config == "owned-v1" || p.Config == "owned-proof-v1") && p.Effects == "owned fixture only; no host mounts; no network" && l.Wall > 0 && l.Wall <= time.Minute && l.MemoryBytes >= 16<<20 && l.MemoryBytes <= 1<<30 && l.CPUs >= 1 && l.CPUs <= 2 && l.PIDs >= 1 && l.PIDs <= 64 && l.OutputBytes >= 1 && l.OutputBytes <= 1<<20 && l.ScratchBytes >= 1 && l.ScratchBytes <= 64<<20
 }
 
 // NewOwned is for trusted application composition only. owned must come from a
@@ -184,7 +184,7 @@ func uniqueName() string {
 }
 func dockerArgs(p Plan, name string) []string {
 	l := p.Limits
-	return []string{"run", "--name", name, "--pull=never", "--network=none", "--read-only", "--user=65534:65534", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--memory", fmt.Sprint(l.MemoryBytes), "--memory-swap", fmt.Sprint(l.MemoryBytes), "--cpus", fmt.Sprint(l.CPUs), "--pids-limit", fmt.Sprint(l.PIDs), "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,nodev,size=%d", l.ScratchBytes), "--entrypoint", "/ci-trust/owned-smoke", p.Image, "--fixture=smoke-v1", "--config=owned-v1"}
+	return []string{"run", "--name", name, "--pull=never", "--network=none", "--read-only", "--user=65534:65534", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--memory", fmt.Sprint(l.MemoryBytes), "--memory-swap", fmt.Sprint(l.MemoryBytes), "--cpus", fmt.Sprint(l.CPUs), "--pids-limit", fmt.Sprint(l.PIDs), "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,nodev,size=%d", l.ScratchBytes), "--entrypoint", "/ci-trust/owned-smoke", p.Image, "--fixture=smoke-v1", "--config=" + p.Config}
 }
 
 type boundedOutput struct {

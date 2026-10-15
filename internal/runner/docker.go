@@ -60,7 +60,13 @@ type executableDocker struct{ path, config string }
 // Both metadata streams share one allocation bound. Tool streams instead go to
 // Runner's synchronized output bound. Every client has a deadline and WaitDelay.
 func (c *executableDocker) call(ctx context.Context, output io.Writer, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	limit := 2 * time.Second
+	// Only the fixed attach operation carries tool execution. All metadata,
+	// creation and cleanup calls retain the independent two-second cap.
+	if len(args) == 3 && args[0] == "start" && args[1] == "--attach" && containerID.MatchString(args[2]) {
+		limit = time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	argv := append([]string{"--config", c.config, "--host", "unix:///var/run/docker.sock"}, args...)
 	cmd := exec.CommandContext(ctx, c.path, argv...)
@@ -189,6 +195,10 @@ func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w i
 	if !d.ready || d.attempted || !containerName.MatchString(name) || !reflect.DeepEqual(args, dockerArgs(d.plan, name)) {
 		return -1, errors.New("unowned start vector")
 	}
+	// Direct callers receive the same owned wall bound as Runner.Execute;
+	// WithTimeout also preserves an earlier caller cancellation deadline.
+	ctx, cancel := context.WithTimeout(ctx, d.plan.Limits.Wall)
+	defer cancel()
 	d.attempted = true
 	d.name = name
 	token := make([]byte, 32)

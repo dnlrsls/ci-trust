@@ -25,8 +25,10 @@ Never build it from agent-provided tool arguments or an unsafe yes flag. There
 is deliberately no CLI yet. Synthetic approval in these tests is test-only.
 
 `NewOwned` is trusted application composition, not a target-facing registration
-API. Only the fixed smoke adapter/tool, fixture and config identities are
-accepted. Its image ID must be an immutable SHA-256 identity from a future
+API. Only adapter/tool `owned-smoke-v1`, fixture `smoke-v1`, and the literal
+configs `owned-v1` (legacy) or `owned-proof-v1` (opt-in) are accepted. The
+validated config alone determines the final `--config=` argument; no arbitrary
+profile, executable or argument vector is admitted. Legacy vectors are unchanged. Its image ID must be an immutable SHA-256 identity from a future
 reviewed catalog. A syntactically valid hash does **not** establish trusted image
 contents. No production catalog currently authorizes any image. The smoke
 entrypoint is `/ci-trust/owned-smoke`; this package does not create that image.
@@ -73,11 +75,20 @@ stdin forwarding or host fallback.
 Preflight uses bounded `info` and immutable-ID `image inspect` metadata only.
 Image volumes, environment, entrypoint, command and healthcheck defaults are
 refused. Image contents must separately be reviewed/catalogued; an ID is not
-trust. Each metadata command shares a 64 KiB stdout/stderr bound. Every client
-command has a two-second ceiling and 200 ms WaitDelay, additionally bounded by
-its parent context. Consequently long-running smoke tools are conservatively
-UNVERIFIABLE even if their displayed wall limit is greater than two seconds.
-The wall limit is an upper bound, not a guaranteed minimum execution duration.
+trust. Each metadata command shares a 64 KiB stdout/stderr bound. Metadata,
+create, inspect, remove and list commands retain a two-second client ceiling.
+Only the exact `start --attach ID` operation instead has a one-minute ceiling,
+the maximum valid owned wall limit. All commands retain 200 ms WaitDelay and
+honor earlier parent deadlines. `LocalDocker.Start` itself imposes the owned
+plan wall across creation, ownership inspection, attachment and final inspection,
+even for a direct caller using `context.Background()`. Runner also bounds Start
+by that wall. The effective attach deadline is the earliest caller/owned wall
+or hard one-minute client ceiling, not the metadata two-second deadline.
+WaitDelay bounds pipe-drain waiting after cancellation; process scheduling and
+cleanup mean wall limits are not exact end-to-end return-time guarantees.
+Runner cleanup retains its independent three-second context, with each cleanup
+client call still capped at two seconds. Tool streams retain Runner's combined
+output bound. None of these fake-tested deadlines proves real runtime behavior.
 
 The backend accepts only the exact Runner-owned vector and is single-use after
 a start attempt. Concurrent operations are rejected immediately, rather than
@@ -182,14 +193,15 @@ code, so a differential CLI campaign does not apply to this unit.
 | CPU / memory / swap / pids | 1 CPU (`100000 100000`), 128 MiB, zero, 32 |
 | Scratch | `/tmp` tmpfs, 8 MiB, rw/nosuid/nodev/noexec |
 | Wall / combined output | 10 seconds upper bound / 64 KiB, enforced by harness |
-| Client ceiling | Existing backend two-second ceiling remains unchanged |
+| Client ceiling | Metadata/create/inspect/remove/list: 2 seconds; attach: earlier caller/owned wall, hard maximum 1 minute |
 
 This is one source profile, not a default image, production catalog or approved
 plan. The probe requires cgroup v2 rooted at `0::/` and reads only fixed bounded
 control files. Other layouts, representations or unavailable controls fail
 closed rather than discovering arbitrary cgroup paths. CPU, memory, swap and
 pids values are **configuration observations**, not stress/enforcement proof.
-The wall upper bound does not override the shorter backend client ceiling.
+Attachment honors the owned wall rather than the shorter metadata ceiling;
+this is harness behavior, not observed container timeout enforcement.
 
 `--help` alone prints two lines and exits 0 without provider calls:
 

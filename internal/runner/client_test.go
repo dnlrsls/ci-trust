@@ -18,13 +18,17 @@ import (
 // socket or target code is accessed by these tests.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "--config" {
-		if len(os.Args) != 6 {
+		if len(os.Args) != 6 && !(len(os.Args) == 8 && os.Args[5] == "start" && os.Args[6] == "--attach" && os.Args[7] == fakeID) {
 			os.Exit(92)
 		}
 		if os.Args[3] != "--host" || os.Args[4] != "unix:///var/run/docker.sock" || os.Getenv("HOME") != os.Args[2] || os.Getenv("DOCKER_CONFIG") != os.Args[2] || os.Getenv("DOCKER_HOST") != "" || os.Getenv("DOCKER_CONTEXT") != "" || os.Getenv("AWS_SECRET_ACCESS_KEY") != "" {
 			os.Exit(90)
 		}
 		switch os.Args[5] {
+		case "start":
+			time.Sleep(2300 * time.Millisecond)
+			fmt.Fprint(os.Stdout, "owned attach stdout\n")
+			fmt.Fprint(os.Stderr, "owned attach stderr\n")
 		case "owned-environment":
 			_ = json.NewEncoder(os.Stdout).Encode(os.Environ())
 		case "owned-streams":
@@ -110,7 +114,7 @@ func TestOwnedExecutableClient(t *testing.T) {
 					t.Fatalf("bytes=%d err=%v", len(s), err)
 				}
 			case "owned-deadline":
-				if err == nil || time.Since(start) > 3*time.Second {
+				if err == nil || s != "" || time.Since(start) < 1900*time.Millisecond || time.Since(start) > 3*time.Second {
 					t.Fatalf("elapsed=%v err=%v", time.Since(start), err)
 				}
 			case "owned-failure":
