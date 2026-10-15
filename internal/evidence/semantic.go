@@ -231,7 +231,7 @@ func semantics(v any) []Diagnostic {
 			}
 			switch dimension {
 			case "CONFIGURATION":
-				if kind != "CONFIGURATION" || text(e["state"]) != "CONFIGURED" {
+				if status != "PRESENT" || kind != "CONFIGURATION" || text(e["state"]) != "CONFIGURED" {
 					valid = false
 				}
 			case "ENFORCEMENT":

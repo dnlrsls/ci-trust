@@ -25,6 +25,9 @@ including supplied values. Serialization failures return no output bytes.
 - Classified causes require a failed invocation, limitations and same-check
   supporting evidence with ASSERTION, FIXTURE, RUNNER or INFRASTRUCTURE basis.
   PRODUCT additionally requires VALIDATION. Exit status alone is insufficient.
+- CONFIGURED evidence supports only PRESENT configuration capabilities, never
+  ABSENT. V1 has no negative configuration-evidence rule; unresolved absence
+  remains UNKNOWN or UNVERIFIABLE.
 - Resolved capabilities require same-check evidence and exact scope equality.
   This conservative v1 policy applies to historical runs too: no inferred scope
   hierarchy or promotion. Remote policy alone supports enforcement; controlled

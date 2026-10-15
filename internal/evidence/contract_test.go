@@ -59,6 +59,38 @@ func TestValidateContractBoundary(t *testing.T) {
 	}
 }
 
+func TestConfigurationEvidenceCannotEstablishAbsence(t *testing.T) {
+	for _, status := range []string{"PRESENT", "ABSENT"} {
+		t.Run(status, func(t *testing.T) {
+			doc := report()
+			e := observation("CONFIGURED", "CONFIGURATION")
+			doc["evidence"] = []any{e}
+			doc["capabilities"] = []any{capability("CONFIGURATION", status, e)}
+			input := reportBytes(t, doc)
+			before := bytes.Clone(input)
+			semanticDiagnostics := ValidateSemantics(input)
+			output, diagnostics := Encode(input)
+			if status == "PRESENT" {
+				if len(semanticDiagnostics) != 0 || len(diagnostics) != 0 || len(output) == 0 {
+					t.Fatalf("positive configuration rejected: %v %v", semanticDiagnostics, diagnostics)
+				}
+			} else {
+				for _, got := range [][]Diagnostic{semanticDiagnostics, diagnostics} {
+					if len(got) != 1 || got[0].Code != "UNSUPPORTED_CAPABILITY" || got[0].Path != "/capabilities/0" {
+						t.Fatalf("contradictory absence not rejected precisely: %v", got)
+					}
+				}
+				if len(output) != 0 {
+					t.Fatal("rejected absence emitted report bytes")
+				}
+			}
+			if !bytes.Equal(input, before) {
+				t.Fatal("configuration validation mutated input")
+			}
+		})
+	}
+}
+
 func TestEncodeCanonicalGolden(t *testing.T) {
 	input := reportBytes(t, emptyReport())
 	before := bytes.Clone(input)
