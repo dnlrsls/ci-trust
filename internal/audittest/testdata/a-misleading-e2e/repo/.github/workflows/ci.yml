@@ -1,0 +1,7 @@
+on: [push]
+jobs:
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo E2E

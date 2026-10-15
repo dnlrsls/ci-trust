@@ -1,0 +1,10 @@
+{
+  "case_id":"malformed-workflow", "requirements":["S7 malformed-workflow","S4 malformed YAML diagnostic"],
+  "sources":["go.mod",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_DECLARATION_UNKNOWN","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP"],
+  "observations":[{"state":"UNKNOWN","scope":"Malformed ci.yml workflow analysis","provenance":"ci.yml line 2 unterminated jobs sequence","meaning":"Source-backed parse diagnostic belongs in partial report; cannot recover configured jobs or assert omitted tests from parse failure."}],
+  "forbidden_claims":["Executed checks","Valid empty workflow","Definite absence of platform tests"],
+  "unknowns":["Workflow graph and configured test paths","Declared platforms","Historical execution","Required checks and enforcement"],
+  "limitations":["Malformed YAML is bounded partial analysis, not operational inability to emit a report; diagnostic text/ID not fixed here"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document including partial-analysis diagnostic","stderr":"DECLARATION_UNKNOWN: Static analysis could not resolve this input; no execution or enforcement is inferred.\nmalformed-yaml: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}

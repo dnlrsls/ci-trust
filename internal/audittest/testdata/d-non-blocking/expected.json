@@ -1,0 +1,10 @@
+{
+  "case_id":"d-non-blocking", "requirements":["S7 D","S4 continue-on-error","S5 enforcement separation"],
+  "sources":["go.mod",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_NON_BLOCKING","CIT_DECLARATION_UNKNOWN","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP"],
+  "observations":[{"state":"NON_BLOCKING","scope":"push job test","provenance":"ci.yml jobs.test.continue-on-error: true and steps[0].run","meaning":"Job configures generic TEST with a non-blocking job setting; this is not mandatory merge enforcement."}],
+  "forbidden_claims":["Mandatory check","Actual branch protection is disabled","Tests ran or passed"],
+  "unknowns":["Declared platforms","Historical execution","Required-check selection and actual enforcement"],
+  "limitations":["Local continue-on-error does not disclose remote rulesets"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"DECLARATION_UNKNOWN: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}

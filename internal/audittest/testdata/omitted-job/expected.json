@@ -1,0 +1,10 @@
+{
+  "case_id":"omitted-job", "requirements":["S7 omitted-job","S5 absent declaration"],
+  "sources":["go.mod",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_DECLARATION_UNKNOWN","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP"],
+  "observations":[{"state":"NOT_CONFIGURED","scope":"Only supplied push workflow; generic TEST invocation","provenance":"ci.yml jobs.info.steps[0].run and go.mod","meaning":"Go project marker exists, but this workflow only echoes; no configured test invocation is present. No event condition exists to justify CIT_STATIC_OMISSION."}],
+  "forbidden_claims":["Executed checks","Tests never run anywhere","Missing Windows/macOS support","Echo is test coverage"],
+  "unknowns":["Declared platforms","Historical execution","Required checks and enforcement"],
+  "limitations":["Absence is scoped to supplied workflow, not all execution paths"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"DECLARATION_UNKNOWN: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}
