@@ -1,0 +1,10 @@
+{
+  "case_id":"b-skipped-validation", "requirements":["S7 B","S4 event-specific eligibility","L6 static omission"],
+  "sources":["go.mod",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_STATIC_OMISSION","CIT_DECLARATION_UNKNOWN","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP"],
+  "observations":[{"state":"STATICALLY_INELIGIBLE","scope":"pull_request event only; job test","provenance":"ci.yml on and jobs.test.if: github.event_name == 'push'","meaning":"Known pull_request event excludes the configured test job; CIT_STATIC_OMISSION applies here."},{"state":"ELIGIBLE","scope":"push event only; job test","provenance":"ci.yml on, jobs.test.if and steps[0].run","meaning":"Known push event satisfies the event comparison; go test is configured generic TEST intent, not execution. Do not apply the pull_request omission to push."}],
+  "forbidden_claims":["GitHub historically skipped or ran this job","push has the same omission as pull_request","Tests passed"],
+  "unknowns":["Historical execution for both events","Declared platforms","Required checks and enforcement"],
+  "limitations":["Only the explicit literal event equality is evaluated; not a scheduler emulator"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"DECLARATION_UNKNOWN: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}

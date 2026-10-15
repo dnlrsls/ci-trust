@@ -1,0 +1,10 @@
+{
+  "case_id":"correct-config", "requirements":["S7 correct-config","S4 literal matrix","L6 declaration"],
+  "sources":["go.mod",".ci-trust.json",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP","CIT_DECLARATION_UNKNOWN","CIT_DYNAMIC_PATH"],
+  "observations":[{"state":"CONFIGURED","scope":"push, pull_request, merge_group; test job; generic TEST only","provenance":".ci-trust.json platforms and ci.yml test.strategy.matrix.os / steps[0].run","platforms":["linux","windows","macos"],"meaning":"All three literal runners configure go test ./...; no configured platform gap in this declared scope."}],
+  "forbidden_claims":["Tests passed or executed","Complete unit/integration/E2E coverage","Mandatory checks"],
+  "unknowns":["Historical execution","Required checks and actual enforcement"],
+  "limitations":["Configuration only; no run or remote policy evidence"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}

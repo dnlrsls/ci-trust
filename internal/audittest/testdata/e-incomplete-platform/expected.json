@@ -1,0 +1,10 @@
+{
+  "case_id":"e-incomplete-platform", "requirements":["S7 E and incomplete-platform","S5 declaration-backed gaps","L6 strict declaration"],
+  "sources":["go.mod",".ci-trust.json",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_DECLARATION_UNKNOWN","CIT_DYNAMIC_PATH"],
+  "observations":[{"state":"CONFIGURED","scope":"push; Linux generic TEST only","provenance":"ci.yml jobs.test.strategy.matrix.os: [ubuntu-latest] and steps[0].run","meaning":"Only Linux runner configures go test."},{"state":"CONFIGURED_GAP","scope":"Supplied literal push workflow test paths compared with declared Windows and macOS; one gap per platform","provenance":".ci-trust.json platforms [linux,windows,macos] AND ci.yml jobs.test.strategy.matrix.os / runs-on / steps[0].run","platforms":["windows","macos"],"meaning":"CIT_PLATFORM_CONFIGURED_GAP for Windows and macOS within this closed literal workflow scope only."}],
+  "forbidden_claims":["Windows or macOS product failure","Linux tests passed","Windows/macOS tests never ran anywhere"],
+  "unknowns":["Historical execution","Required checks and enforcement"],
+  "limitations":["Configured gaps are not OS correctness results or global absence of execution"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}

@@ -1,0 +1,8 @@
+on: [push]
+jobs:
+  test:
+    strategy:
+      matrix: ${{ fromJSON(vars.TEST_MATRIX) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: go test ./...

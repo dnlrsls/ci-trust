@@ -1,2 +1,7 @@
 *.go text eol=lf
 /internal/evidence/testdata/**/*.json text eol=lf
+
+# Public audit fixture bytes and source workflow must be identical on every host.
+/internal/audittest/testdata/** text eol=lf
+/.github/workflows/*.yml text eol=lf
+/.ci-trust.json text eol=lf

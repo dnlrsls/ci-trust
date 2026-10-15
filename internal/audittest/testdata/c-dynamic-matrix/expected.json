@@ -1,0 +1,10 @@
+{
+  "case_id":"c-dynamic-matrix", "requirements":["S7 C and dynamic/unknown","S4 computed matrix","S5 unresolved platform paths"],
+  "sources":["go.mod",".ci-trust.json",".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_DYNAMIC_PATH","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP","CIT_DECLARATION_UNKNOWN"],
+  "observations":[{"state":"UNKNOWN","scope":"push; test job matrix combinations and runner OS","provenance":"ci.yml strategy.matrix: fromJSON(vars.TEST_MATRIX), runs-on: matrix.os; .ci-trust.json declared platforms","meaning":"Preserve expressions; configured go test intent cannot establish any concrete platform combination. Unresolved runners prevent definite configured platform absence conclusions."}],
+  "forbidden_claims":["Confirmed Linux/Windows/macOS combinations","Definite missing Windows/macOS tests","Computed matrix was evaluated","Tests executed"],
+  "unknowns":["Matrix combinations and configured platform coverage","Historical execution","Required checks and enforcement"],
+  "limitations":["No expression execution or variable resolution; declarations are not runner evidence"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"unresolved-matrix: Static analysis could not resolve this input; no execution or enforcement is inferred.\nunresolved-runner: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}
