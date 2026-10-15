@@ -2,7 +2,9 @@
 
 **Status: backend code and owned-fake tests only; S8 real-isolation acceptance
 remains OPEN.** No production adapter/image catalog or executable plan binding
-is shipped. This unit ran ZERO real Docker commands, containers or image
+is shipped. The separate [image archive preparation](owned-image.md) and
+[exact-plan preparation binding](controlled-plan.md) provide source-only inputs
+for a manual review workflow, not runtime admission or execution consent. This unit ran ZERO real Docker commands, containers or image
 operations. Fake tests are not isolation evidence or execution consent.
 
 ## Public boundary
@@ -273,8 +275,15 @@ empty-default requirements. Its nonempty-Env refusal remains unchanged; do not
 work around it by admitting the injected PATH. No config rewriter, image builder
 or finalization procedure is implemented or authorized by this source recipe.
 
-No image-building automation or Docker commands are supplied here. Image
-creation/provisioning, immutable-content review/catalog admission, exact runtime
-plan binding and execution require future explicit human review and approval.
+The recipe above still has no image-building automation or Docker commands.
+The separate [owned image archive tool](owned-image.md) constructs an explicit
+empty-config archive without invoking a builder or daemon; it does not finalize
+or authorize this Dockerfile recipe. Its independent offline inspection is not
+observed daemon metadata, production catalog admission, or isolation evidence.
+[The manual preparation workflow](isolation-preparation.md#owned-archive-and-exact-plan-review)
+displays the complete run-bound plan before the configured review boundary and
+rechecks it afterward, but never creates runtime Consent. Image import,
+immutable-content review/catalog admission, exact runtime-plan consent and
+execution still require explicit human review and approval.
 Full S8/#8 and #9 acceptance remain OPEN; mocks and this recipe do not fill that
 proof gap.

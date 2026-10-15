@@ -14,9 +14,60 @@ The JSON is internal preparation metadata, **not report-v1 evidence or an execut
 
 Missing runtime, malformed/oversized output, timeout, or nonempty client configuration also yield a valid UNVERIFIABLE result. Exit 0 means metadata collection/reporting completed, **not that isolation works**. `--help` prints usage with exit 0; any other argument produces usage on stderr and exit 2. Output failure exits 1. No approval flag exists.
 
+## Owned archive and exact-plan review
+
+A separate manual-only workflow, **Owned image archive and plan review (NO
+execution)**, prepares source artifacts without invoking Docker. It is restricted
+to `dnlrsls/ci-trust` on `main`; the portable test matrix and the metadata-only
+workflow above are unchanged. This source change has not been published or run
+on GitHub. Do not dispatch it without a separate authorized preparation run.
+
+1. Check out the exact run revision without persisted credentials and use the
+   existing pinned Go setup action. Build only the owned static Linux/amd64 probe;
+   do not execute it on the host.
+2. [Pack and independently inspect](owned-image.md) a bounded image archive with
+   an explicit empty execution configuration. There is no Dockerfile conversion,
+   default PATH admission, base image pull, daemon image load, or container start.
+   Archive inspection binds the expected binary and literal marker; it does not
+   prove that the compiled contents have received production catalog review.
+3. [Prepare the complete fixed plan](controlled-plan.md), image identity, limits,
+   effects, source revision and run/attempt binding. The snapshot is SHA-256 of
+   `git archive --format=tar` for that revision, not a future runtime snapshot
+   callback. Display the full JSON and image inspection in the job summary before
+   the protected job becomes eligible.
+4. The dependent job names the existing
+   `ci-trust-controlled-verification` Environment and links the current run. After
+   that configured boundary it consumes the exact upstream plan bytes and binding
+   from job outputs, rechecks revision/run/attempt and the fixed profile, then
+   reports only preparation validation. Denial prevents that job from running.
+
+No artifact is uploaded, registry is contacted, Docker command is invoked or
+`runner.Consent` is created. The archive exists only in the preparation job's
+private scratch and is discarded with the hosted job. Expressions enter shell
+steps through environment variables, never interpolated shell source. Token
+permissions stay `contents: read`; no secrets or runtime credentials are passed.
+Tests validate this workflow structure without executing Actions.
+
+**Review is not execution consent.** The Environment must retain the independently
+verified owner-reviewer, main-only and no-admin-bypass policy. This workflow cannot
+by itself establish that the policy is unchanged or that a genuine human approved
+this run. Future live use must independently observe policy and the approval
+audit, not accept dispatch, a matching digest, or an agent-written boolean as
+human presence. A rerun has a different run attempt and requires a newly bound
+plan. No approval receipt is reusable as runtime authority.
+
+Before real execution, separately authorize image import and independent daemon
+configuration observation, review immutable catalog admission, integrate trusted
+runtime snapshot remeasurement, and approve the actual current execution plan.
+The existing two-second backend client ceiling remains unchanged; its ten-second
+plan wall limit is only an upper bound. Real resource stress, cancellation,
+network/credential denial and cleanup proof are not supplied by this workflow.
+
 ## Still missing
 
-- Production runner and reviewed immutable adapter/tool-image catalog.
+- Production catalog admission and reviewed immutable adapter/tool-image identity
+  with independently observed daemon configuration. Backend source exists, but
+  supported production runtime combinations remain unattested.
 - A trusted human interface approving the exact displayed current plan. A dispatch event or agent-written boolean is **not consent**.
 - Real runtime evidence for network/secrets/source isolation, resource limits, cancellation, cleanup, and then pinned-tool lint sensitivity.
 
