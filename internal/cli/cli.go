@@ -11,12 +11,14 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/dnlrsls/ci-trust/internal/bootstrap"
 	"github.com/dnlrsls/ci-trust/internal/evidence"
 )
 
 // Services keeps command parsing independent of the audit implementation.
 // Audit must redact known secrets before returning schema-v1 report bytes.
 type Services struct {
+	Bootstrap        func(string, []string) (bootstrap.Plan, error)
 	Audit            func(string, []string) ([]byte, error)
 	Version          string
 	InteractiveInput bool
@@ -25,12 +27,14 @@ type Services struct {
 const auditUsage = "ci-trust audit PATH [--format human|json] [--platform linux|windows|macos ...]\n"
 const reportUsage = "ci-trust report [--input FILE|-] [--format human|json]\n"
 const effects = "Offline/read-only: no execution, network, hidden storage, or writes.\nExit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.\n"
-const usage = auditUsage + reportUsage + "ci-trust --help\nci-trust --version\n" + effects
+const bootstrapUsage = "ci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]\nDry-run only: no apply behavior; conditional drafts are not executed or enforced.\n"
+const usage = auditUsage + reportUsage + bootstrapUsage + "ci-trust --help\nci-trust --version\n" + effects
 const maxInput = 8 << 20
 
 type invocation struct {
 	command, path, input, format string
 	platforms                    []string
+	dryRun                       bool
 }
 
 func parse(args []string) (invocation, bool) {
@@ -39,7 +43,7 @@ func parse(args []string) (invocation, bool) {
 		return v, false
 	}
 	v.command = args[0]
-	if v.command != "audit" && v.command != "report" {
+	if v.command != "audit" && v.command != "report" && v.command != "bootstrap" {
 		return v, false
 	}
 	seen := map[string]bool{}
@@ -47,12 +51,19 @@ func parse(args []string) (invocation, bool) {
 	positional := false
 	for i := 1; i < len(args); i++ {
 		a := args[i]
-		if !positional && a == "--" && v.command == "audit" {
+		if !positional && a == "--" && v.command != "report" {
 			positional = true
 			continue
 		}
 		if !positional && strings.HasPrefix(a, "-") {
-			if a != "--format" && !(a == "--platform" && v.command == "audit") && !(a == "--input" && v.command == "report") {
+			if a == "--dry-run" && v.command == "bootstrap" {
+				if v.dryRun {
+					return v, false
+				}
+				v.dryRun = true
+				continue
+			}
+			if a != "--format" && !(a == "--platform" && v.command != "report") && !(a == "--input" && v.command == "report") {
 				return v, false
 			}
 			if i+1 >= len(args) {
@@ -83,13 +94,13 @@ func parse(args []string) (invocation, bool) {
 				v.platforms = append(v.platforms, value)
 			}
 		} else {
-			if v.command != "audit" || v.path != "" || a == "" {
+			if v.command == "report" || v.path != "" || a == "" {
 				return v, false
 			}
 			v.path = a
 		}
 	}
-	return v, v.command != "audit" || v.path != ""
+	return v, (v.command == "report" || v.path != "") && (v.command != "bootstrap" || v.dryRun)
 }
 
 // Run validates the entire invocation before reading input or invoking Audit.
@@ -123,12 +134,31 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Serv
 			return write([]byte(auditUsage + effects))
 		case "report":
 			return write([]byte(reportUsage + effects))
+		case "bootstrap":
+			return write([]byte(bootstrapUsage + effects))
 		}
 	}
 	v, ok := parse(args)
 	if !ok {
 		fmt.Fprint(stderr, "ci-trust: invalid arguments\n"+usage)
 		return 2
+	}
+	if v.command == "bootstrap" {
+		if services.Bootstrap == nil {
+			return fail("bootstrap service unavailable")
+		}
+		plan, err := services.Bootstrap(v.path, append([]string(nil), v.platforms...))
+		if err != nil {
+			return fail("bootstrap failed")
+		}
+		output, records, err := renderPlan(plan, v.format)
+		if err != nil {
+			return fail("invalid bootstrap plan")
+		}
+		for _, record := range records {
+			fmt.Fprintln(stderr, safe(record.Code)+": "+safe(record.Message))
+		}
+		return write(output)
 	}
 	var data []byte
 	var err error
