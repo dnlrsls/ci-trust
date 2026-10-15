@@ -189,9 +189,9 @@ contradictory, report it instead of silently inventing another format.
   facts and IDs. Both are necessary.
 
 ## Tasks
-- T1 | S1-S3 | delegated parallel structural + semantic units, disjoint surfaces; inline shared composition | in_progress | unit and composition GREEN observed; work-unit commits pending.
-- T2 | S1-S4 | inline integration, docs and full-suite seam check | pending | focused integration GREEN; suite and commit pending.
-- T3 | S1-S4 | independent verification, candidate assessment/review if due | pending | proof/closure commit pending.
+- T1 | S1-S3 | delegated parallel structural + semantic units, disjoint surfaces; inline shared composition | done | schema ae1b6cad68ea77336a655e0021044572260fe96d; semantics 443fe8ff1513aa155a85f1a7bcf46b08cd18bf14; unit/full GREEN and independent PASS.
+- T2 | S1-S4 | inline integration, docs and full-suite seam check | in_progress | focused/full GREEN, vet/format/links and independent PASS; integration commit pending.
+- T3 | S1-S4 | independent verification, candidate assessment/readback and closure | pending | independent PASS complete; final committed-slice evidence pending.
 
 ## Log
 L1: sigamos con el issue 2, ya pasamos a merge
@@ -314,3 +314,14 @@ feat/evidence-contract-v1-01-schema (structural contract);
 feat/evidence-contract-v1-02-semantics (admissibility/serialization);
 feat/evidence-contract-v1-03-integration (full boundary, docs and evidence).
 No branch is published and no PR/merge or issue closure is authorized.
+L25: Parent post-advisory spot go test -count=1 ./... passed (0.558s).
+Tracker/work-plan commit b0c31267d7054231c5ba7f9cf76cd41b6d02c638 assessed passive,
+reviewDue false/passive. Child schema commit ae1b6cad68ea77336a655e0021044572260fe96d
+contains 13 files / 863 additions; ASSESS base b0c3126 returns native medium,
+verification high via item-5 escalation, reviewDue false/under_budget.
+Child semantic commit 443fe8ff1513aa155a85f1a7bcf46b08cd18bf14 contains 7 files /
+1,080 additions; ASSESS base ae1b6ca returns native medium, verification high via
+item-2 escalation, reviewDue false/under_budget. Independent verifier PASS and
+self-checks already cover the exact behavior in both slices. T1 is now complete;
+T2 integration commit and T3 final evidence remain. The two slices exceed the
+review heuristic; preserve coherent behavior/tests rather than hide the counts.

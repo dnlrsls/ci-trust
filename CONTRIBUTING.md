@@ -1,8 +1,24 @@
 # Contributing to CI Trust
 
 Start with the [architecture](docs/architecture.md) and the
-[CLI contract](docs/cli.md). This repository currently contains design documents,
-not a buildable Go module or executable.
+[CLI contract](docs/cli.md). The first Go unit is the evidence contract and
+validator under internal/evidence; no CLI executable exists yet.
+
+## Local checks
+
+Use Go 1.26 (module language version 1.26.0). The implementation environment is
+Go 1.26.4 on Windows/amd64; this does not establish Linux/macOS behavior.
+Dependencies are pinned in go.mod/go.sum. Initial module download needs network;
+contract validation itself never fetches schemas or contacts remote services.
+
+- Run the suite: go test ./...
+- Run static checks: go vet ./...
+- Check formatting: gofmt -l internal/evidence
+
+Read the [schema contract](docs/evidence-contract.md) and
+[evidence rules](docs/evidence-semantics.md) before changing fixtures. Schema
+validation and semantic validation are both required; neither proves evidence
+truth. No licensed distribution until the maintainer chooses a license.
 
 ## Working conventions
 
@@ -17,15 +33,16 @@ not a buildable Go module or executable.
   exports are created by this proposal.
 - Separate Core logic from terminal I/O, consent and process control. The Core
   must not depend on an agent, LLM, Gentle Shell or an online service.
-- Select a supported Go toolchain and pinned dependencies when adding go.mod.
-  No Go version, YAML parser or CLI framework is prescribed yet.
+- The baseline is Go 1.26 with the pure-Go JSON Schema validator pinned in
+  go.mod. No YAML parser or CLI framework is selected yet. New dependencies
+  require a concrete need and compatible distribution assumptions.
 
 ## Verification expectations
 
 For testable behavior, first observe a failing focused test, then implement and
 run it plus the applicable suite. Go's standard test tooling is the baseline.
-There are no runnable product tests yet; do not present future commands as checks
-already performed.
+Contract tests exercise exported internal library boundaries. There is no
+executable yet: library tests are not CLI, isolation or remote CI evidence.
 
 Define fixture expectations independently of analyzer output. Public-interface
 checks must cover exit status, exact stdout/stderr, no execution during audit,
