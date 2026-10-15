@@ -1,0 +1,7 @@
+on: [push]
+jobs:
+  test:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - run: go test ./...

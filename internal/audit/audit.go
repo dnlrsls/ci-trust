@@ -235,7 +235,7 @@ func Analyze(s discovery.Snapshot, o Options) ([]byte, error) {
 		for _, j := range w.Jobs {
 			jid := evidence.StableID("job", w.Path, j.ID)
 			scope := record{"kind": "JOB", "subject": jid}
-			js := []discovery.Source{j.Source, j.Runner.Source, j.Matrix.Source}
+			js := []discovery.Source{j.Source, j.Runner.Source, j.Matrix.Source, j.Condition.Source, j.Settings["continue-on-error"].Source}
 			proof = append(proof, js...)
 			for _, literal := range j.Matrix.Literals {
 				keys := []string{}
@@ -300,7 +300,8 @@ func Analyze(s discovery.Snapshot, o Options) ([]byte, error) {
 				}
 				se := b.ev(sid, "CONFIGURED", sscope, sources, false)
 				sr := []string{se}
-				observeEligibility(b, sid, st.Eligibility, sscope, sr, &closed)
+				// Step eligibility includes the governing job condition; retain its proof.
+				observeEligibility(b, sid, st.Eligibility, sscope, append([]string{se}, jr...), &closed)
 				if nonblocking(st.ContinueOnError) {
 					b.finding("CIT_NON_BLOCKING", sid, "Step is configured as potentially non-blocking.", "DIRECT", sscope, sr, "Not a mandatory merge guarantee.")
 				}
