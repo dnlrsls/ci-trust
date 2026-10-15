@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type ownedClient struct {
@@ -138,4 +140,99 @@ func (f *ownedClient) owner() string {
 		}
 	}
 	return ""
+}
+func TestDockerExecute(t *testing.T) {
+	for _, scenario := range []string{"success", "denied", "stale", "invalid", "snapshot", "collision", "inspect", "startup", "oom", "unsupported", "image", "foreign", "absence", "remove", "attach", "overflow", "timeout"} {
+		t.Run(scenario, func(t *testing.T) {
+			source := ownedTree(t)
+			before := source()
+			p := owned()
+			p.Snapshot = before
+			f := &ownedClient{collision: scenario == "collision", inspectError: scenario == "inspect", startup: scenario == "startup", oom: scenario == "oom"}
+			f.mode = scenario
+			if scenario == "timeout" {
+				p.Limits.Wall = 20 * time.Millisecond
+			}
+			d := &LocalDocker{client: f, host: "linux"}
+			r, err := NewOwned(d, p, func(context.Context) (string, error) {
+				if scenario == "snapshot" {
+					return "changed", nil
+				}
+				return source(), nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := Consent{p.Digest(), true}
+			if scenario == "denied" {
+				c.Approved = false
+			}
+			if scenario == "stale" {
+				c.Digest = "stale"
+			}
+			if scenario == "invalid" {
+				p.Tool = "unowned"
+			}
+			got := r.Execute(context.Background(), p, c)
+			if scenario == "success" {
+				if got.Outcome != Completed || got.ExitCode != 7 || got.Output != "stdout\nstderr\n" || !got.CleanupVerified {
+					t.Fatalf("%+v calls=%v", got, f.calls)
+				}
+			} else {
+				want := Unverifiable
+				if scenario == "denied" || scenario == "stale" {
+					want = Denied
+				}
+				if scenario == "invalid" {
+					want = Invalid
+				}
+				if got.Outcome != want {
+					t.Fatalf("outcome=%+v want=%s", got, want)
+				}
+			}
+			counts := map[string]int{}
+			for _, a := range f.calls {
+				counts[a[0]]++
+			}
+			noCreate := scenario == "denied" || scenario == "stale" || scenario == "invalid" || scenario == "snapshot" || scenario == "unsupported" || scenario == "image"
+			wantCreate := 1
+			if noCreate {
+				wantCreate = 0
+			}
+			if counts["create"] != wantCreate {
+				t.Fatalf("create calls=%v", counts)
+			}
+			noStart := noCreate || scenario == "collision" || scenario == "inspect" || scenario == "foreign"
+			wantStart := 1
+			if noStart {
+				wantStart = 0
+			}
+			if counts["start"] != wantStart || counts["rm"] != wantStart {
+				t.Fatalf("process/cleanup calls=%v", counts)
+			}
+			if wantStart == 1 && scenario != "absence" && scenario != "remove" && !got.CleanupVerified {
+				t.Fatalf("cleanup not verified: %+v", got)
+			}
+			if (scenario == "absence" || scenario == "remove") && got.CleanupVerified {
+				t.Fatal("ambiguous cleanup accepted")
+			}
+			if (scenario == "denied" || scenario == "stale" || scenario == "invalid") && len(f.calls) != 0 {
+				t.Fatal("denied plan started client")
+			}
+			for _, a := range f.calls {
+				if scenario == "snapshot" && a[0] == "create" {
+					t.Fatal("changed snapshot created container")
+				}
+				if a[0] == "rm" && !reflect.DeepEqual(a, []string{"rm", "--force", fakeID}) {
+					t.Fatalf("unbound removal %q", a)
+				}
+			}
+			if (scenario == "collision" || scenario == "inspect") && f.removed {
+				t.Fatal("removed unbound container")
+			}
+			if source() != before {
+				t.Fatal("source bytes/counter changed")
+			}
+		})
+	}
 }
