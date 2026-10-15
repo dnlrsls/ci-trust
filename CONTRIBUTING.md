@@ -82,7 +82,9 @@ changes. The local demo alone never substitutes for portable execution.
 
 Never run audited scripts, hooks, package managers or actions. Treat input as
 untrusted and preserve traversal/parsing bounds. Do not fetch remote evidence or
-add auto-fix/apply behavior. `verify` and `bootstrap` remain future commands.
+add auto-fix/apply behavior. `verify` remains future work. Bootstrap is strictly
+[conditional dry-run](docs/bootstrap.md); preserve source report references,
+unknown setup preconditions, conflicts, isolated two-pass and no-write proofs.
 Controlled verification has no production Docker backend/trusted image catalog;
 no runtime provisioning, automatic consent or unsandboxed fallback is authorized.
 A later Gentleman-Programming/engram study is opt-in and revision-pinned, uses only

@@ -5,3 +5,6 @@
 /internal/audittest/testdata/** text eol=lf
 /.github/workflows/*.yml text eol=lf
 /.ci-trust.json text eol=lf
+
+# Conditional workflow/diff goldens are compared byte-for-byte.
+/internal/bootstrap/testdata/** text eol=lf

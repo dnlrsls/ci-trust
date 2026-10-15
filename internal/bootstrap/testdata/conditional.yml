@@ -1,0 +1,39 @@
+# ci-trust conditional draft v1; review all preconditions before use.
+name: CI Trust draft
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      # PRECONDITION: provide verified runtime and dependencies; no setup inferred.
+      - run: "npm run test"
+        working-directory: "."
+  validate-macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      # PRECONDITION: provide verified runtime and dependencies; no setup inferred.
+      - run: "npm run test"
+        working-directory: "."
+  validate-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      # PRECONDITION: provide verified runtime and dependencies; no setup inferred.
+      - run: "npm run test"
+        working-directory: "."
