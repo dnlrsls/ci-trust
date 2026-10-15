@@ -1,7 +1,10 @@
 package runner
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -149,11 +155,101 @@ func (d *LocalDocker) Preflight(ctx context.Context, p Plan) error {
 	return nil
 }
 
-// Intermediate cut: execution and removal remain unavailable until the complete
-// ownership lifecycle and its safety tests land together. No client call occurs.
-func (d *LocalDocker) Start(context.Context, string, []string, io.Writer) (int, error) {
-	return -1, errors.New("owned lifecycle unavailable in intermediate snapshot")
+var containerID = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var containerName = regexp.MustCompile(`^ci-trust-[0-9]+-[0-9]+$`)
+
+type dockerInspection struct {
+	ID     string `json:"Id"`
+	Image  string
+	Config struct{ Labels map[string]string }
+	State  struct {
+		Status, StartedAt string
+		Error             *string
+		ExitCode          *int
+		OOMKilled         *bool
+	}
 }
-func (d *LocalDocker) Remove(context.Context, string) error {
-	return errors.New("owned lifecycle unavailable in intermediate snapshot")
+
+func (d *LocalDocker) inspect(ctx context.Context, id string) (dockerInspection, error) {
+	var rows []dockerInspection
+	s, err := d.client.call(ctx, nil, "inspect", id)
+	if err != nil {
+		return dockerInspection{}, err
+	}
+	if json.Unmarshal([]byte(s), &rows) != nil || len(rows) != 1 || rows[0].ID != id || rows[0].Image != d.plan.Image || rows[0].Config.Labels["ci-trust.owner"] != d.owner {
+		return dockerInspection{}, errors.New("container identity or ownership unverified")
+	}
+	return rows[0], nil
+}
+func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w io.Writer) (int, error) {
+	if err := d.admit(ctx); err != nil {
+		return -1, err
+	}
+	defer d.mu.Unlock()
+	if !d.ready || d.attempted || !containerName.MatchString(name) || !reflect.DeepEqual(args, dockerArgs(d.plan, name)) {
+		return -1, errors.New("unowned start vector")
+	}
+	d.attempted = true
+	d.name = name
+	token := make([]byte, 32)
+	if _, err := rand.Read(token); err != nil {
+		return -1, err
+	}
+	d.owner = hex.EncodeToString(token)
+	create := append([]string{"create", "--log-driver=none", "--ipc=none", "--label", "ci-trust.owner=" + d.owner}, args[1:]...)
+	s, err := d.client.call(ctx, nil, create...)
+	if err != nil {
+		return -1, fmt.Errorf("creation ambiguous; no removal authority: %w", err)
+	}
+	id := strings.TrimSpace(s)
+	if !containerID.MatchString(id) {
+		return -1, errors.New("creation ID unavailable")
+	}
+	if _, err = d.inspect(ctx, id); err != nil {
+		return -1, err
+	}
+	d.id = id // Removal authority exists only after exact ID, image and secret label match.
+	_, attachErr := d.client.call(ctx, w, "start", "--attach", id)
+	if ctx.Err() != nil {
+		return -1, ctx.Err()
+	}
+	row, err := d.inspect(ctx, id)
+	if err != nil {
+		return -1, err
+	}
+	started, err := time.Parse(time.RFC3339Nano, row.State.StartedAt)
+	if err != nil || started.IsZero() || row.State.Status != "exited" || row.State.Error == nil || *row.State.Error != "" || row.State.OOMKilled == nil || *row.State.OOMKilled || row.State.ExitCode == nil || *row.State.ExitCode < 0 || *row.State.ExitCode > 255 {
+		return -1, errors.New("startup, resource or infrastructure failure")
+	}
+	if attachErr != nil {
+		// Matching client/container statuses cannot prove complete transport.
+		// Preserve the independently inspected exit without claiming completion.
+		return *row.State.ExitCode, fmt.Errorf("attach completion unverified: %w", attachErr)
+	}
+	return *row.State.ExitCode, nil
+}
+func (d *LocalDocker) Remove(ctx context.Context, name string) error {
+	if err := d.admit(ctx); err != nil {
+		return err
+	}
+	defer d.mu.Unlock()
+	if !d.attempted || name != d.name || d.id == "" {
+		return errors.New("creation or ownership ambiguous; no removal authority")
+	}
+	if _, err := d.inspect(ctx, d.id); err != nil {
+		return err
+	}
+	_, removeErr := d.client.call(ctx, nil, "rm", "--force", d.id)
+	// A successful exact-ID listing is required; generic inspect errors never mean absence.
+	s, err := d.client.call(ctx, nil, "ps", "--all", "--no-trunc", "--filter", "id="+d.id, "--format", "{{.ID}}")
+	if err != nil {
+		return fmt.Errorf("absence unverified: %w", err)
+	}
+	if len(bytes.TrimSpace([]byte(s))) != 0 {
+		return errors.New("owned container still present")
+	}
+	if removeErr != nil {
+		return fmt.Errorf("removal reported infrastructure failure despite absence: %w", removeErr)
+	}
+	return nil
 }
