@@ -1,0 +1,7 @@
+on: [push, pull_request]
+jobs:
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: go test ./...
