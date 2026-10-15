@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/dnlrsls/ci-trust/internal/audit"
+	"github.com/dnlrsls/ci-trust/internal/bootstrap"
 	"github.com/dnlrsls/ci-trust/internal/cli"
 	"golang.org/x/term"
 )
@@ -16,6 +17,9 @@ func main() {
 	os.Exit(cli.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, cli.Services{
 		Audit: func(path string, platforms []string) ([]byte, error) {
 			return audit.Scan(path, audit.Options{Platforms: platforms})
+		},
+		Bootstrap: func(path string, platforms []string) (bootstrap.Plan, error) {
+			return bootstrap.Scan(path, bootstrap.Options{Platforms: platforms})
 		},
 		Version:          version,
 		InteractiveInput: term.IsTerminal(int(os.Stdin.Fd())),

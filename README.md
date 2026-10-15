@@ -33,7 +33,10 @@ No installation or licensed release/distribution is claimed.
 - Both accept `--format human|json`. JSON stdout is one canonical schema-v1
   document; diagnostics also appear on stderr. Human output retains scoped records
   and limitations, not a simplified success badge.
-- Exit **0** means valid report (including findings/FAIL/UNKNOWN), help or version;
+- `bootstrap PATH --dry-run` emits [conditional workflow proposals](docs/bootstrap.md),
+  human by default or `--format json`. It never applies changes; missing runtime
+  and dependency preparation remain explicit preconditions, not invented setup.
+- Exit **0** means valid report/plan (including findings/FAIL/UNKNOWN), help or version;
   **1** means operational failure; **2** means invalid invocation. Report input is
   bounded to 8 MiB; interactive stdin is refused.
 
@@ -55,10 +58,12 @@ or enforcement evidence for the workflows it audits.
 
 ## Future work and safety
 
-`verify` and `bootstrap` are not implemented commands. Controlled verification
+`verify` is not implemented. Controlled verification
 requires explicit target-bound consent and bounded isolation; no production Docker
 backend or trusted image/catalog is available. There is no host-shell fallback.
-Future bootstrap is evidence-backed dry-run recommendations only, never apply.
+Bootstrap is evidence-backed conditional dry-run recommendations only, never apply.
+The older [native audit receipt](docs/portable-ci.md) does not establish execution
+of this later bootstrap implementation; new source requires its own verification.
 The later opt-in, revision-pinned Gentleman-Programming/engram study must use generic
 adapters without upstream writes; no study or network access is claimed here.
 
