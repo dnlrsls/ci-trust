@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ci-trust.invalid/schema/report-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot", "inventory", "capabilities", "workflows", "evidence", "findings", "diagnostics", "limitations"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "snapshot": {"$ref": "#/$defs/snapshot"},
+    "inventory": {"type": "array", "items": {"$ref": "#/$defs/inventory"}},
+    "capabilities": {"type": "array", "items": {"$ref": "#/$defs/capability"}},
+    "workflows": {"type": "array", "items": {"$ref": "#/$defs/workflow"}},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+    "limitations": {"$ref": "#/$defs/strings"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+    "text": {"type": "string", "minLength": 1},
+    "strings": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "refs": {"type": "array", "items": {"$ref": "#/$defs/id"}, "uniqueItems": true},
+    "snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "repository_id", "commit_sha"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "repository_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "commit_sha": {"type": ["string", "null"], "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "line", "column"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\:]+(/[^/\\\\:]+)*$", "not": {"pattern": "(^|/)\\.{1,2}(/|$)"}},
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "subject"],
+      "properties": {"kind": {"enum": ["REPOSITORY", "WORKFLOW", "JOB", "STEP", "TOOL_FIXTURE"]}, "subject": {"$ref": "#/$defs/id"}}
+    },
+    "inventory": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "name", "source", "evidence_refs"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "kind": {"enum": ["STACK", "TOOL", "CHECK"]}, "name": {"$ref": "#/$defs/text"}, "source": {"$ref": "#/$defs/source"}, "evidence_refs": {"$ref": "#/$defs/refs"}}
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "adapter", "sources", "basis"],
+      "properties": {
+        "kind": {"enum": ["CONFIGURATION", "CONTROLLED_RUN", "HISTORICAL_RUN", "REMOTE_POLICY", "DIAGNOSTIC"]},
+        "adapter": {"$ref": "#/$defs/id"}, "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}},
+        "basis": {"enum": ["SOURCE", "ASSERTION", "FIXTURE", "RUNNER", "INFRASTRUCTURE", "EXIT_STATUS", "UNRESOLVED"]}
+      }
+    },
+    "tool": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version", "configuration_id"],
+      "properties": {"name": {"type": ["string", "null"], "minLength": 1}, "version": {"type": ["string", "null"], "minLength": 1}, "configuration_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}}
+    },
+    "execution": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "required": ["phase", "outcome", "os", "environment_id", "tool", "fixture_role"],
+      "properties": {
+        "phase": {"enum": ["STARTUP", "VALIDATION"]}, "outcome": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+        "os": {"enum": [null, "LINUX", "WINDOWS", "MACOS"]},
+        "environment_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "tool": {"$ref": "#/$defs/tool"}, "fixture_role": {"enum": [null, "CLEAN", "FAULT", "RESTORED"]}
+      }
+    },
+    "cause": {
+      "type": ["object", "null"], "additionalProperties": false, "required": ["category", "evidence_refs", "limitations"],
+      "properties": {"category": {"enum": ["PRODUCT", "TEST_FIXTURE", "HARNESS", "ENVIRONMENT_INFRASTRUCTURE", "UNKNOWN"]}, "evidence_refs": {"$ref": "#/$defs/refs"}, "limitations": {"$ref": "#/$defs/strings"}}
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "check_id", "state", "scope", "provenance", "execution", "cause", "limitations"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "check_id": {"$ref": "#/$defs/id"},
+        "state": {"enum": ["CONFIGURED", "EXECUTED", "SKIPPED", "NOT_EXECUTED", "UNKNOWN", "UNVERIFIABLE"]},
+        "scope": {"$ref": "#/$defs/scope"}, "provenance": {"$ref": "#/$defs/provenance"},
+        "execution": {"$ref": "#/$defs/execution"}, "cause": {"$ref": "#/$defs/cause"}, "limitations": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "rule_id", "evidence_refs", "scope", "explanation", "certainty", "certainty_rule", "limitations"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "rule_id": {"$ref": "#/$defs/id"},
+        "evidence_refs": {"allOf": [{"$ref": "#/$defs/refs"}], "minItems": 1},
+        "scope": {"$ref": "#/$defs/scope"}, "explanation": {"$ref": "#/$defs/text"},
+        "certainty": {"enum": ["DIRECT", "DERIVED", "UNKNOWN"]}, "certainty_rule": {"$ref": "#/$defs/text"}, "limitations": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "capability": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "check_id", "dimension", "status", "evidence_refs", "scope", "limitations"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "check_id": {"$ref": "#/$defs/id"},
+        "dimension": {"enum": ["CONFIGURATION", "EXECUTION", "EFFICACY", "ENFORCEMENT"]}, "status": {"enum": ["PRESENT", "ABSENT", "UNKNOWN", "UNVERIFIABLE"]},
+        "evidence_refs": {"$ref": "#/$defs/refs"}, "scope": {"$ref": "#/$defs/scope"}, "limitations": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "job": {
+      "type": "object", "additionalProperties": false, "required": ["id", "needs", "evidence_refs"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "needs": {"$ref": "#/$defs/refs"}, "evidence_refs": {"$ref": "#/$defs/refs"}}
+    },
+    "workflow": {
+      "type": "object", "additionalProperties": false, "required": ["id", "source", "events", "jobs"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "source": {"$ref": "#/$defs/source"}, "events": {"$ref": "#/$defs/strings", "uniqueItems": true}, "jobs": {"type": "array", "items": {"$ref": "#/$defs/job"}}}
+    },
+    "diagnostic": {
+      "type": "object", "additionalProperties": false, "required": ["id", "code", "message", "source"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "code": {"$ref": "#/$defs/id"}, "message": {"$ref": "#/$defs/text"}, "source": {"anyOf": [{"$ref": "#/$defs/source"}, {"type": "null"}]}}
+    }
+  }
+}
