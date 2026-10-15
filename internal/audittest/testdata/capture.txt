@@ -1,4 +1,4 @@
 Serialization runtime source checkpoint: 624a6ffd6e9ad100fd7f3f3ee57f5cbda336be65
 Initial capture baseline: 167d095b5da816a7c296b1e2deb8d27915ddf239
 Independent local acceptance: PASS; settled review mv99t3xt-t-4e08, B1-only recheck mv9a3vtc-u-5fhj.
-External Linux/Windows/macOS CI: PENDING; no target workflow execution is inferred.
+Native Linux/Windows/macOS CI: PASS; run38715049086, sourcecfe4cf2770479e9539b98fe510c4b5fc471e267c, tree1037f5fe94dccf54f3b229f3506d8520b7ed13c3; nine cases per host, no skips. See docs/portable-ci.md; no audited-target workflow execution is inferred.

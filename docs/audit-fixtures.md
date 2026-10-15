@@ -4,8 +4,8 @@ Nine owned input repositories and semantic manifests are ready for review under
 `internal/audittest/testdata/`. **This is not completion of issue #7.** No analyzer,
 rule evaluator, public CLI, fixture command, or GitHub action was run to author
 these semantic expectations. Local public-binary serialization candidates now
-exist; **independent local acceptance passed**, while portable execution proof remains
-unmet. Capturing output did not redefine the semantic requirements.
+exist; **independent acceptance and native three-host execution passed** at the
+[source/run/job receipt](portable-ci.md). Capturing output did not redefine the semantic requirements.
 
 ## Review path
 
@@ -88,7 +88,7 @@ contract cases, not silently claimed as covered by this small corpus.
 - F's absence of a workflow link does not prove global non-execution. A's job name
   does not classify echo as E2E validation.
 
-## Local serialization bindings — independently accepted, external CI pending
+## Independently accepted serialization bindings and native receipt
 
 `cmd/ci-trust/e2e_test.go` exercises all nine cases through an owned public
 executable initially built from source `167d095b5da816a7c296b1e2deb8d27915ddf239`.
@@ -144,21 +144,22 @@ Initial
 harness failures exposed the prospective stderr-contract mismatch; there was no
 preimplementation behavior RED for the already implemented CLI.
 
-## Remaining issue #7 work
+## Maintaining the accepted corpus
 
 - Preserve the independent local acceptance and field-specific provenance tests;
   future candidate changes require renewed scoped review, not blind recapture.
 - Preserve public-binary whole-byte, isolated immutability, schema, determinism
   and source-absent report checks as the integrated CLI evolves.
-- Obtain observed Linux, Windows and macOS public-binary results. One host's unit
-  suite is not portable proof, and auditing workflows is not executing them.
+- Preserve the [observed Linux/Windows/macOS receipt](portable-ci.md) and obtain
+  fresh results when behavior changes. One host's unit suite is not portable
+  proof, and auditing workflows is not executing them.
 - Preserve the observed [driven demo and self-audit](audit-demo.md). The later
   Gentleman-Programming/engram study stays opt-in and revision-pinned with generic
   adapters; no upstream access or writes are part of this preparation.
 
-## Prepared portable proof path (not yet observed)
+## Observed portable proof path
 
-The proposed `.github/workflows/test.yml` runs owned project tests and vet on
+The `.github/workflows/test.yml` runs owned project tests and vet on
 `ubuntu-latest`, `windows-latest` and `macos-latest`, with read-only repository
 permissions and ten-minute job bounds. Actions are pinned to immutable commit
 IDs resolved from their official v6 tags; checkout does not persist credentials
@@ -168,10 +169,11 @@ Go uses the supported 1.26 patch line; each job records the actual toolchain.
 
 This workflow is development validation of CI Trust, not a collector of the
 workflows being audited. It does not install or invoke any fixture validator.
-The root support declaration is a prospective support target, not proof of
-portable success. At this preparation checkpoint no run ID, successful job or
-public CLI host result is claimed. Bind the final tested SHA to exact run/job
-receipts only after #6 and the driven tests are integrated.
+The root support declaration alone is not proof of portable success. Manual run
+`38715049086` passed all nine public cases on every native host, with no skipped
+tests; [the receipt](portable-ci.md) records exact source/tree/jobs and toolchains.
+The application merge retained that exact tested tree. Initial workflow
+registration was a config-only prerequisite, not application acceptance.
 
 This corpus is intentionally not an exhaustive S4 conformance suite: needs edges,
 permissions, timeout/concurrency inheritance, include/exclude bounds, unsupported
