@@ -1,0 +1,106 @@
+name: Owned image archive and plan review (NO execution)
+
+'on':
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+  GOTELEMETRY: 'off'
+
+jobs:
+  prepare:
+    name: Prepare archive and display exact plan - no Docker
+    if: github.repository == 'dnlrsls/ci-trust' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      binding: ${{ steps.plan.outputs.binding }}
+    steps:
+      - name: Check out the exact owned revision without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Compile and inspect only the owned archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          prep="$GITHUB_WORKSPACE/.git/owned-image-ci"
+          mkdir -p "$prep/tmp" "$prep/cache"
+          export GOCACHE="$prep/cache" TEMP="$prep/tmp" TMP="$prep/tmp" TMPDIR="$prep/tmp"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o "$prep/owned-smoke" ./internal/ownedprobe/cmd/owned-smoke
+          go run ./internal/ownedimage/cmd/owned-image pack --binary "$prep/owned-smoke" --marker tools/owned-smoke/root-marker > "$prep/image.tar"
+          go run ./internal/ownedimage/cmd/owned-image inspect --archive "$prep/image.tar" --binary "$prep/owned-smoke" --marker tools/owned-smoke/root-marker > "$prep/image.json"
+      - name: Display full immutable plan before the protected boundary
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          prep="$GITHUB_WORKSPACE/.git/owned-image-ci"
+          export GOCACHE="$prep/cache" TEMP="$prep/tmp" TMP="$prep/tmp" TMPDIR="$prep/tmp"
+          snapshot="$(git archive --format=tar "$GITHUB_SHA" | sha256sum | cut -d' ' -f1)"
+          image="$(jq -er '.image_id' "$prep/image.json")"
+          go run ./internal/controlledplan/cmd/controlled-plan prepare --snapshot "$snapshot" --image "$image" --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" > "$prep/plan.json"
+          printf 'plan=%s\n' "$(base64 -w0 "$prep/plan.json")" >> "$GITHUB_OUTPUT"
+          printf 'binding=%s\n' "$(jq -er '.binding_digest' "$prep/plan.json")" >> "$GITHUB_OUTPUT"
+          {
+            printf '## Preparation only: review this exact plan\n\n'
+            printf 'No image was loaded and no container will start. This is not runtime consent or isolation proof.\n\n'
+            printf 'Snapshot = SHA-256 of git archive for the recorded source revision; runtime remeasurement is not integrated.\n\n'
+            printf 'Image archive inspection:\n```json\n'
+            cat "$prep/image.json"
+            printf '\n```\nFull plan, limits, effects and run binding:\n```json\n'
+            cat "$prep/plan.json"
+            printf '\n```\nThe configured Environment boundary reviews only these preparation bytes.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  review:
+    name: Check exact plan after configured review - NO execution
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: ci-trust-controlled-verification
+      url: https://github.com/dnlrsls/ci-trust/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Check out the same exact revision without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Recheck upstream bytes and current run context after boundary
+        shell: bash
+        env:
+          PLAN_BASE64: ${{ needs.prepare.outputs.plan }}
+          EXPECTED_BINDING: ${{ needs.prepare.outputs.binding }}
+        run: |
+          set -euo pipefail
+          umask 077
+          prep="$GITHUB_WORKSPACE/.git/owned-image-ci-review"
+          mkdir -p "$prep/tmp" "$prep/cache"
+          export GOCACHE="$prep/cache" TEMP="$prep/tmp" TMP="$prep/tmp" TMPDIR="$prep/tmp"
+          printf '%s' "$PLAN_BASE64" | base64 --decode > "$prep/plan.json"
+          go run ./internal/controlledplan/cmd/controlled-plan check --input "$prep/plan.json" --binding "$EXPECTED_BINDING" --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" > "$prep/checked.json"
+          {
+            printf '## Exact preparation binding checked\n\n```json\n'
+            cat "$prep/checked.json"
+            printf '\n```\nNo Consent was created; no runtime, catalog admission or container execution occurred.\n'
+            printf 'Environment policy/reviewer audit must be independently observed; this output alone is not proof of human approval.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
