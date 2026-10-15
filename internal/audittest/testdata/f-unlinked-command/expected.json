@@ -1,0 +1,10 @@
+{
+  "case_id":"f-unlinked-command", "requirements":["S7 F","S4 exact npm linkage","S5 available unlinked command"],
+  "sources":["package.json",".github/workflows/ci.yml","counter"],
+  "required_rule_ids":["CIT_COMMAND_UNLINKED","CIT_DECLARATION_UNKNOWN","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP"],
+  "observations":[{"state":"UNLINKED","scope":"package.json scripts.lint versus supplied push workflow","provenance":"package.json scripts.lint: eslint . and ci.yml steps[0].run: npm test","meaning":"Lint is available/configured in the manifest but not linked by this understood workflow; CIT_COMMAND_UNLINKED targets lint."},{"state":"LINKED","scope":"push job test; generic TEST intent","provenance":"ci.yml steps[0].run npm test -> package.json scripts.test node --test","meaning":"Link to exact manifest definition, not lint or inferred E2E coverage."}],
+  "forbidden_claims":["Lint globally never executed","npm test executed","Installing eslint is required for audit","Complete functional coverage"],
+  "unknowns":["Declared platforms","Historical execution of test or lint","Required checks and enforcement"],
+  "limitations":["Package tool declaration is not execution evidence; counter must remain 0; no install or script execution"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"DECLARATION_UNKNOWN: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}

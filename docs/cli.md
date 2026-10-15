@@ -1,109 +1,95 @@
-# Proposed CLI contract
+# Audit and report CLI contract
 
-**Design only: none of these commands is implemented.** Examples specify future
-behavior; they are not evidence of successful runs.
+`cmd/ci-trust` binds the offline audit producer to `internal/cli` and implements
+the commands below. Local public-binary tests cover report file/stdin parity,
+help/version, exact argument errors and unchanged source/counters on rejection.
+Driven positive audit-fixture acceptance and three-host proof remain pending;
+service tests and a successful build alone are not that evidence.
 
-## Commands
+Build from source with `go build ./cmd/ci-trust`. The development version is
+`dev`; `-ldflags "-X main.version=VALUE"` sets it explicitly. Initial terminal
+checks use pinned `golang.org/x/term` on the actual stdin descriptor, not a
+character-device guess. No raw terminal mode or shell process is used.
 
-Options shown in brackets are optional. PATH is required where shown; there is
-no implicit target repository. Formats are human (default) or json.
+```
+ci-trust audit PATH [--format human|json] [--platform linux|windows|macos ...]
+ci-trust report [--input FILE|-] [--format human|json]
+ci-trust --help
+ci-trust --version
+```
 
-| Invocation | Input / output | Side effects |
-| --- | --- | --- |
-| ci-trust audit PATH [--format human\|json] | Bounded local snapshot → audit report | Offline/read-only; no repository processes |
-| ci-trust report [--input FILE\|-] [--format human\|json] | Existing schema-valid report → rendering | No scan, execution or hidden report lookup |
-| ci-trust verify PATH --check lint [--format human\|json] | Target-bound consented plan → verification report | Owned isolated fixture execution only; P1 |
-| ci-trust bootstrap PATH --dry-run [--format human\|json] | Local audit evidence → recommendation plan/diffs | Read-only, no apply; P2 |
-| ci-trust --help | Usage, options, effects, limitations and exits | None |
-| ci-trust --version | Executable version | None |
+Options may precede or follow PATH. Each platform uses a separate `--platform`;
+repeated platform values are rejected. Explicit values override declaration policy
+through the injected audit callback. No implicit cwd audit exists. Report defaults
+to stdin and human format, never rescans and needs no source repository.
+`--help` or `help` alone after a subcommand shows its help. `help audit` and
+`help report` also work. Other mixtures of help/options are invalid.
 
-Help is also available for each subcommand. Unknown commands/options, missing
-required arguments and unsupported formats are argument errors. Version/help
-return 0; JSON's one-document rule applies to report/plan-producing commands.
+## Pinned text and rendering
 
-### Audit and report
+Root help is the four invocation lines above followed by:
 
-Audit findings and unknown facts are valid report data, not process failures.
-Audit never invokes validators, scripts, hooks, package managers or actions.
+```
+Offline/read-only: no execution, network, hidden storage, or writes.
+Exit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.
+```
 
-Report defaults to stdin, equivalent to --input -. It must work without access
-to the source repository. An empty stream, invalid JSON or unsupported schema
-version is an explicit operational input failure, not an implicit cwd audit.
-When stdin is an interactive terminal and no file is supplied, fail explicitly
-rather than silently looking for stored reports. Invalid option syntax is exit 2.
+Subcommand help is its invocation line followed by those same two lines.
+Version is `ci-trust VERSION\n` (Go-quoted VERSION, including quotes, to
+escape untrusted control characters).
 
-### Controlled verification
+Human output is deterministic, lossless scoped data, not a green trust score:
+`CI Trust report (configuration is not execution or enforcement)\n`, then
+`schema_version: VALUE\n`, `snapshot: VALUE\n`, and these sections in order:
+`inventory`, `capabilities`, `workflows`, `evidence`, `findings`, `diagnostics`,
+`limitations`. Each section is `NAME:\n`, then one `  VALUE\n` per canonical
+record, or `  (none)\n`. VALUE is compact canonical JSON. All strings in human
+values escape Unicode control/format characters using JSON `\uXXXX` (including
+terminal ESC, DEL, C1 and bidi controls). Every finding, scope, evidence reference,
+unknown status and limitation remains visible, without inferring guarantees.
 
-The command must show the complete target snapshot, tool/image/config/fixture
-identity, resource limits and effects before requesting explicit consent.
-Present prompts/plan diagnostics on stderr, not JSON stdout. Require an
-interactive terminal for the initial consent route. Without explicit consent
-to the current plan, no verification process or container starts; noninteractive
-invocation cannot imply consent. Do not add an unsafe --yes or host-shell fallback.
+JSON stdout is exactly one evidence.Encode canonical schema-v1 document with
+newline. Schema diagnostics remain report data and additionally produce
+`CODE: MESSAGE\n` on stderr in canonical diagnostic order. Their code/message
+control and format characters are escaped as `\uXXXX`; they never pollute stdout.
+Rendering does not discover secrets: producers must apply evidence.Redact with
+known sensitive values before injection. CLI applies existing admissibility and
+canonical encoding, without changing the schema or input bytes.
 
-Denied/missing consent or unavailable isolation yields a valid UNVERIFIABLE
-report with a reason and no execution. Snapshot/tool/image/limit changes invalidate
-consent. Exact plan/consent representation and cancellation behavior must be
-specified in #8 before implementing this route; future machine-readable consent
-is not part of this foundation contract.
+## Errors and safety
 
-Only the owned clean/fault/restored lint fixtures from #9 can run, under #8's
-pre-provisioned approved runtime. No arbitrary repository configs/plugins,
-dependency installation, implicit image pulls, credentials, writable host source
-mounts or network. A controlled fault's expected failure is evidence, not a CLI
-operational failure or a product defect.
+All invocation failures have empty stdout and exactly
+`ci-trust: invalid arguments\n` plus root help on stderr; exit 2. Arguments,
+formats and platforms are validated before callback or report input access.
+Duplicate singleton options, unknown options, extra paths and empty values fail.
+Paths may contain spaces/Unicode, but option-looking paths must use `-- PATH`.
+`--` ends audit options only.
 
-### Bootstrap
+Operational failures have empty stdout, exit 1, and exactly one of:
 
---dry-run is mandatory. Its absence is exit 2, never permission to apply.
-Read the explicit target and emit proposed contents/diffs, findings/evidence,
-preconditions, conflicts and limitations. Unsupported stacks or unresolved
-commands produce limitations, not invented commands. Never modify workflows,
-branch policy or dependencies. Templates are not autonomous LLM generation.
+```
+ci-trust: audit service unavailable
+ci-trust: audit failed
+ci-trust: report input required (interactive stdin)
+ci-trust: cannot open report input
+ci-trust: cannot read report input
+ci-trust: report exceeds 8 MiB
+ci-trust: invalid report
+ci-trust: cannot write output
+```
 
-## Output and exit status
+Report stdin/file input and injected audit bytes are bounded to 8 MiB. Empty,
+malformed, duplicate-key, unsupported-version, schema-invalid and semantically
+inadmissible data fail before output. Interactive stdin (including explicit `-`)
+is refused without reading. Findings, FAIL and UNKNOWN are valid data, exit 0.
+Output writers may themselves fail after accepting bytes; no stream API can
+undo those bytes. No report bytes are written before full validation.
 
-| Exit | Meaning | stdout / stderr |
-| --- | --- | --- |
-| 0 | A valid report/plan was produced, even with findings, FAIL or UNKNOWN; or help/version succeeded | Requested rendering; diagnostics on stderr |
-| 1 | Operational failure prevented a valid result, including unreadable/missing report input | No report document; actionable diagnostic on stderr |
-| 2 | Invalid invocation | No report document; usage diagnostic on stderr |
+## Future design, not implemented
 
-Exit 0 never means “trusted CI”, passing validators or mandatory merge protection.
-An unavailable capability is valid report data if representable; inability to
-produce a valid report is exit 1.
-
-JSON stdout contains exactly one schema-valid document and a final newline, no
-progress, prompts or logs. No partial JSON is emitted on failure. Human output
-shows evidence scope and limitations, not an aggregate green trust label.
-Exact JSON fields belong to #2; do not publish a competing example schema here.
-
-Equivalent input/options produce deterministic report/plan JSON; stable
-serialization and redaction are explicit obligations, not default Go guarantees.
-Report rendering does not append volatile metadata or reinterpret configured
-observations as execution.
-
-## Examples and required observations
-
-All paths are examples. Shell redirection below is a user-controlled output
-write, not a write performed by CI Trust to the audited repository.
-
-| Example | Expected public behavior |
-| --- | --- |
-| ci-trust audit ./example | Human report; exit 0 even if configured coverage gaps exist |
-| ci-trust audit "./example repo" --format json > audit.json | One JSON document in user-chosen output file, stderr diagnostics; exit 0 if report valid |
-| ci-trust report --input audit.json | Human rendering without rescanning source; exit 0 for valid supported report |
-| ci-trust report --input - --format json < audit.json | One validated JSON report from stdin; exit 0 |
-| ci-trust report < audit.json | Same stdin/human defaults; no hidden database |
-| ci-trust report --input missing.json | Exit 1, empty stdout, explicit stderr error |
-| ci-trust report --input invalid.json | Exit 1 for malformed/unsupported report, empty stdout, explicit stderr error |
-| ci-trust audit ./example --format xml | Exit 2, empty stdout, invalid-format diagnostic |
-| ci-trust verify ./example --check lint | Display bounded plan; execute only after valid consent and isolation preflight; otherwise valid unavailable report |
-| ci-trust bootstrap ./example --dry-run --format json | One deterministic proposal document; target bytes unchanged |
-| ci-trust bootstrap ./example | Exit 2, empty stdout; no apply behavior |
-
-Actual wording and JSON fixtures must be pinned in their owning implementation
-issues before executable tests are written. All public CLI tests must assert
-exit status, exact stdout/stderr and that rejected inputs leave source bytes
-and sentinel counters unchanged. Unknown remote execution/enforcement stays
-UNKNOWN in every relevant example.
+`verify PATH --check lint` requires separately specified target-bound consent and
+pre-provisioned bounded isolation; no unsafe yes flag or host-shell fallback.
+`bootstrap PATH --dry-run` will produce evidence-backed reviewable proposals,
+never apply changes. Both commands currently return invalid invocation (2).
+No validators, hooks, scripts, package managers, actions, shell/eval, network,
+credentials or hidden report storage are used by this layer.
