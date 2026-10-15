@@ -1,0 +1,81 @@
+[
+  {"name": "configured", "file": "valid.json", "structural": true, "semantic": true, "semantic_codes": []},
+  {"name": "six-states", "file": "states.json", "structural": true, "semantic": true, "semantic_codes": []},
+  {"name": "supported-causes-sensitivity-policy", "file": "bounded-evidence.json", "structural": true, "semantic": true, "semantic_codes": []},
+  {"name": "invalid-enum", "file": "invalid-enum.json", "structural": false, "structural_code": "schema.invalid", "semantic": false, "semantic_codes": ["INVALID_STATE"]},
+  {
+    "name": "dangling-reference", "file": "valid.json", "structural": true, "semantic": false, "semantic_codes": ["DANGLING_REFERENCE"],
+    "mutations": [{"old": "\"evidence_refs\": [\"ev:configured\"]", "new": "\"evidence_refs\": [\"absent\"]"}]
+  },
+  {
+    "name": "yaml-executed", "file": "valid.json", "structural": true, "semantic": false, "semantic_codes": ["INVALID_STATE"],
+    "mutations": [{"old": "\"state\": \"CONFIGURED\"", "new": "\"state\": \"EXECUTED\""}]
+  },
+  {
+    "name": "yaml-skipped", "file": "valid.json", "structural": true, "semantic": false, "semantic_codes": ["INVALID_STATE"],
+    "mutations": [{"old": "\"state\": \"CONFIGURED\"", "new": "\"state\": \"SKIPPED\""}]
+  },
+  {
+    "name": "configured-with-outcome", "file": "valid.json", "structural": true, "semantic": false, "semantic_codes": ["INVALID_STATE"],
+    "mutations": [{"old": "\"execution\": null", "new": "\"execution\": {\"phase\": \"VALIDATION\", \"outcome\": \"PASS\", \"os\": null, \"environment_id\": null, \"tool\": {\"name\": null, \"version\": null, \"configuration_id\": null}, \"fixture_role\": null}"}]
+  },
+  {
+    "name": "startup-product-claim", "file": "states.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAUSE"],
+    "mutations": [{"old": "\"category\": \"UNKNOWN\"", "new": "\"category\": \"PRODUCT\""}]
+  },
+  {
+    "name": "exit-only-product-claim", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAUSE"],
+    "mutations": [{"old": "\"id\": \"product-support\", \"check_id\": \"check\", \"state\": \"UNKNOWN\",\n      \"scope\": {\"kind\": \"TOOL_FIXTURE\", \"subject\": \"product-fixture\"},\n      \"provenance\": {\"kind\": \"DIAGNOSTIC\", \"adapter\": \"fixture\", \"sources\": [], \"basis\": \"ASSERTION\"}", "new": "\"id\": \"product-support\", \"check_id\": \"check\", \"state\": \"UNKNOWN\",\n      \"scope\": {\"kind\": \"TOOL_FIXTURE\", \"subject\": \"product-fixture\"},\n      \"provenance\": {\"kind\": \"DIAGNOSTIC\", \"adapter\": \"fixture\", \"sources\": [], \"basis\": \"EXIT_STATUS\"}"}]
+  },
+  {
+    "name": "unsupported-attribution-remains-unknown", "file": "bounded-evidence.json", "structural": true, "semantic": true, "semantic_codes": [],
+    "mutations": [{"old": "\"category\": \"PRODUCT\", \"evidence_refs\": [\"product-support\"]", "new": "\"category\": \"UNKNOWN\", \"evidence_refs\": []"}]
+  },
+  {
+    "name": "same-check-required", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAUSE"],
+    "mutations": [
+      {"old": "\"inventory\": [", "new": "\"inventory\": [{\"id\": \"other-check\", \"kind\": \"CHECK\", \"name\": \"Other\", \"source\": {\"path\": \"ci/other.yml\", \"line\": 1, \"column\": 1}, \"evidence_refs\": []},"},
+      {"old": "\"id\": \"product-support\", \"check_id\": \"check\"", "new": "\"id\": \"product-support\", \"check_id\": \"other-check\""}
+    ]
+  },
+  {
+    "name": "single-pass-not-efficacy", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAPABILITY"],
+    "mutations": [{"old": "\"evidence_refs\": [\"clean\", \"fault\", \"restored\"]", "new": "\"evidence_refs\": [\"clean\"]"}]
+  },
+  {
+    "name": "identity-mismatch", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAPABILITY"],
+    "mutations": [{"old": "\"phase\": \"VALIDATION\", \"outcome\": \"FAIL\", \"os\": \"LINUX\", \"environment_id\": \"environment\", \"tool\": {\"name\": \"checker\", \"version\": \"1\", \"configuration_id\": \"strict\"}, \"fixture_role\": \"FAULT\"", "new": "\"phase\": \"VALIDATION\", \"outcome\": \"FAIL\", \"os\": \"LINUX\", \"environment_id\": \"other-environment\", \"tool\": {\"name\": \"checker\", \"version\": \"1\", \"configuration_id\": \"strict\"}, \"fixture_role\": \"FAULT\""}]
+  },
+  {
+    "name": "bounded-scope-not-repository", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAPABILITY"],
+    "mutations": [{"old": "\"id\": \"sensitivity\", \"check_id\": \"check\", \"dimension\": \"EFFICACY\", \"status\": \"PRESENT\", \"evidence_refs\": [\"clean\", \"fault\", \"restored\"], \"scope\": {\"kind\": \"TOOL_FIXTURE\", \"subject\": \"sensitivity-fixture\"}", "new": "\"id\": \"sensitivity\", \"check_id\": \"check\", \"dimension\": \"EFFICACY\", \"status\": \"PRESENT\", \"evidence_refs\": [\"clean\", \"fault\", \"restored\"], \"scope\": {\"kind\": \"REPOSITORY\", \"subject\": \"repository\"}"}]
+  },
+  {
+    "name": "yaml-not-enforcement", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAPABILITY"],
+    "mutations": [{"old": "\"evidence_refs\": [\"policy\"]", "new": "\"evidence_refs\": [\"configured\"]"}]
+  },
+  {
+    "name": "controlled-run-not-enforcement", "file": "bounded-evidence.json", "structural": true, "semantic": false, "semantic_codes": ["UNSUPPORTED_CAPABILITY"],
+    "mutations": [{"old": "\"evidence_refs\": [\"policy\"]", "new": "\"evidence_refs\": [\"clean\"]"}]
+  },
+  {
+    "name": "bad-version", "file": "valid.json", "structural": false, "structural_code": "schema.version", "semantic": true, "semantic_codes": [],
+    "mutations": [{"old": "\"schema_version\": \"1\"", "new": "\"schema_version\": \"2\""}]
+  },
+  {
+    "name": "missing-provenance", "file": "valid.json", "structural": false, "structural_code": "schema.invalid", "semantic": false, "semantic_codes": ["INVALID_PROVENANCE", "INVALID_STATE"],
+    "mutations": [{"old": "\"provenance\":", "new": "\"missing\":"}]
+  },
+  {
+    "name": "invalid-outcome", "file": "states.json", "structural": false, "structural_code": "schema.invalid", "semantic": false, "semantic_codes": ["INVALID_OUTCOME"],
+    "mutations": [{"old": "\"outcome\": \"PASS\"", "new": "\"outcome\": \"GREEN\""}]
+  },
+  {
+    "name": "metadata-error", "file": "valid.json", "structural": false, "structural_code": "schema.invalid", "semantic": true, "semantic_codes": [],
+    "mutations": [{"old": "\"commit_sha\": null", "new": "\"commit_sha\": \"not-a-full-sha\""}]
+  },
+  {
+    "name": "unsafe-path", "file": "valid.json", "structural": false, "structural_code": "schema.invalid", "semantic": true, "semantic_codes": [],
+    "mutations": [{"old": "\"ci/check.yml\"", "new": "\"../private/check.yml\""}]
+  }
+]

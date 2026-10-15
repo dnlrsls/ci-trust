@@ -1,0 +1,111 @@
+{
+  "schema_version": "1",
+  "snapshot": {"id": "snapshot:bounded", "repository_id": "repository", "commit_sha": "0123456789abcdef0123456789abcdef01234567"},
+  "inventory": [
+    {"id": "check", "kind": "CHECK", "name": "Controlled checker", "source": {"path": "ci/check.yml", "line": 1, "column": 1}, "evidence_refs": ["configured"]}
+  ],
+  "capabilities": [
+    {"id": "configuration", "check_id": "check", "dimension": "CONFIGURATION", "status": "PRESENT", "evidence_refs": ["configured"], "scope": {"kind": "REPOSITORY", "subject": "repository"}, "limitations": []},
+    {"id": "sensitivity", "check_id": "check", "dimension": "EFFICACY", "status": "PRESENT", "evidence_refs": ["clean", "fault", "restored"], "scope": {"kind": "TOOL_FIXTURE", "subject": "sensitivity-fixture"}, "limitations": ["Only this controlled fixture and invocation identity were verified."]},
+    {"id": "enforcement", "check_id": "check", "dimension": "ENFORCEMENT", "status": "PRESENT", "evidence_refs": ["policy"], "scope": {"kind": "REPOSITORY", "subject": "repository"}, "limitations": ["Submitted policy observation, not a claim from YAML or a controlled run."]}
+  ],
+  "workflows": [
+    {"id": "workflow", "source": {"path": "ci/check.yml", "line": 1, "column": 1}, "events": ["push"], "jobs": [{"id": "lint", "needs": [], "evidence_refs": ["configured"]}]}
+  ],
+  "evidence": [
+    {
+      "id": "configured", "check_id": "check", "state": "CONFIGURED",
+      "scope": {"kind": "REPOSITORY", "subject": "repository"},
+      "provenance": {"kind": "CONFIGURATION", "adapter": "fixture", "sources": [{"path": "ci/check.yml", "line": 1, "column": 1}], "basis": "SOURCE"},
+      "execution": null, "cause": null, "limitations": []
+    },
+    {
+      "id": "clean", "check_id": "check", "state": "EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "sensitivity-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "ASSERTION"},
+      "execution": {"phase": "VALIDATION", "outcome": "PASS", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": "CLEAN"},
+      "cause": null, "limitations": ["Does not establish that a CI job ran."]
+    },
+    {
+      "id": "fault", "check_id": "check", "state": "EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "sensitivity-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "ASSERTION"},
+      "execution": {"phase": "VALIDATION", "outcome": "FAIL", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": "FAULT"},
+      "cause": null, "limitations": ["Expected fixture fault; no automatic product attribution."]
+    },
+    {
+      "id": "restored", "check_id": "check", "state": "EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "sensitivity-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "ASSERTION"},
+      "execution": {"phase": "VALIDATION", "outcome": "PASS", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": "RESTORED"},
+      "cause": null, "limitations": []
+    },
+    {
+      "id": "policy", "check_id": "check", "state": "UNKNOWN",
+      "scope": {"kind": "REPOSITORY", "subject": "repository"},
+      "provenance": {"kind": "REMOTE_POLICY", "adapter": "fixture", "sources": [], "basis": "SOURCE"},
+      "execution": null, "cause": null, "limitations": ["Policy observation is independent of execution history."]
+    },
+    {
+      "id": "product", "check_id": "check", "state": "EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "product-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "ASSERTION"},
+      "execution": {"phase": "VALIDATION", "outcome": "FAIL", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": null},
+      "cause": {"category": "PRODUCT", "evidence_refs": ["product-support"], "limitations": ["Assertion attribution is limited to the submitted fixture."]},
+      "limitations": []
+    },
+    {
+      "id": "product-support", "check_id": "check", "state": "UNKNOWN",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "product-fixture"},
+      "provenance": {"kind": "DIAGNOSTIC", "adapter": "fixture", "sources": [], "basis": "ASSERTION"},
+      "execution": null, "cause": null, "limitations": ["Authored assertion evidence, not raw output."]
+    },
+    {
+      "id": "test-fixture", "check_id": "check", "state": "EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "incompatible-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "FIXTURE"},
+      "execution": {"phase": "VALIDATION", "outcome": "FAIL", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": null},
+      "cause": {"category": "TEST_FIXTURE", "evidence_refs": ["fixture-support"], "limitations": ["Fixture incompatibility explains this invocation only."]},
+      "limitations": []
+    },
+    {
+      "id": "fixture-support", "check_id": "check", "state": "UNKNOWN",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "incompatible-fixture"},
+      "provenance": {"kind": "DIAGNOSTIC", "adapter": "fixture", "sources": [], "basis": "FIXTURE"},
+      "execution": null, "cause": null, "limitations": ["Submitted fixture incompatibility evidence."]
+    },
+    {
+      "id": "harness", "check_id": "check", "state": "NOT_EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "startup-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "RUNNER"},
+      "execution": {"phase": "STARTUP", "outcome": "FAIL", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": null},
+      "cause": {"category": "HARNESS", "evidence_refs": ["harness-support"], "limitations": ["Runner initialization failed before validation."]},
+      "limitations": ["No product assertion executed."]
+    },
+    {
+      "id": "harness-support", "check_id": "check", "state": "UNKNOWN",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "startup-fixture"},
+      "provenance": {"kind": "DIAGNOSTIC", "adapter": "fixture", "sources": [], "basis": "RUNNER"},
+      "execution": null, "cause": null, "limitations": ["Submitted runner initialization evidence."]
+    },
+    {
+      "id": "environment-failure", "check_id": "check", "state": "NOT_EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "environment-fixture"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "INFRASTRUCTURE"},
+      "execution": {"phase": "STARTUP", "outcome": "FAIL", "os": "LINUX", "environment_id": "environment", "tool": {"name": "checker", "version": "1", "configuration_id": "strict"}, "fixture_role": null},
+      "cause": {"category": "ENVIRONMENT_INFRASTRUCTURE", "evidence_refs": ["environment-support"], "limitations": ["Required infrastructure was unavailable."]},
+      "limitations": []
+    },
+    {
+      "id": "environment-support", "check_id": "check", "state": "UNKNOWN",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "environment-fixture"},
+      "provenance": {"kind": "DIAGNOSTIC", "adapter": "fixture", "sources": [], "basis": "INFRASTRUCTURE"},
+      "execution": null, "cause": null, "limitations": ["Submitted infrastructure availability evidence."]
+    }
+  ],
+  "findings": [
+    {"id": "finding", "rule_id": "bounded-product", "evidence_refs": ["product"], "scope": {"kind": "TOOL_FIXTURE", "subject": "product-fixture"}, "explanation": "A submitted assertion attributes the failed validation.", "certainty": "DIRECT", "certainty_rule": "ASSERTION supports only the named invocation.", "limitations": ["No repository-wide claim."]}
+  ],
+  "diagnostics": [{"id": "diagnostic", "code": "fixture.note", "message": "Independent authored evidence.", "source": null}],
+  "limitations": ["All facts are independent test submissions, not measured repository outcomes."]
+}
