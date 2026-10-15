@@ -15,6 +15,10 @@ contract validation itself never fetches schemas or contacts remote services.
 - Run static checks: go vet ./...
 - Check formatting: gofmt -l internal/evidence
 
+Git attributes keep Go sources and byte-exact canonical golden fixtures at LF,
+including Windows checkouts with core.autocrlf enabled. Preserve these rules;
+do not normalize away canonical-output differences in golden assertions.
+
 Read the [schema contract](docs/evidence-contract.md) and
 [evidence rules](docs/evidence-semantics.md) before changing fixtures. Schema
 validation and semantic validation are both required; neither proves evidence
