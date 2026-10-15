@@ -190,8 +190,8 @@ contradictory, report it instead of silently inventing another format.
 
 ## Tasks
 - T1 | S1-S3 | delegated parallel structural + semantic units, disjoint surfaces; inline shared composition | done | schema ae1b6cad68ea77336a655e0021044572260fe96d; semantics 443fe8ff1513aa155a85f1a7bcf46b08cd18bf14; unit/full GREEN and independent PASS.
-- T2 | S1-S4 | inline integration, docs and full-suite seam check | in_progress | focused/full GREEN, vet/format/links and independent PASS; integration commit pending.
-- T3 | S1-S4 | independent verification, candidate assessment/readback and closure | pending | independent PASS complete; final committed-slice evidence pending.
+- T2 | S1-S4 | inline integration, docs and full-suite seam check | done | integration 94159185f4073fc715e30c095c0f19f17c6f1b48; focused/full GREEN, vet/format/links and independent PASS.
+- T3 | S1-S4 | independent verification, candidate assessment/readback and closure | done | work-unit 94159185f4073fc715e30c095c0f19f17c6f1b48 plus docs-only closure checkpoint on third child; independent PASS all eleven ACs, all reviewDue false, branch/publication readback observed.
 
 ## Log
 L1: sigamos con el issue 2, ya pasamos a merge
@@ -325,3 +325,26 @@ item-2 escalation, reviewDue false/under_budget. Independent verifier PASS and
 self-checks already cover the exact behavior in both slices. T1 is now complete;
 T2 integration commit and T3 final evidence remain. The two slices exceed the
 review heuristic; preserve coherent behavior/tests rather than hide the counts.
+L26: Integration commit 94159185f4073fc715e30c095c0f19f17c6f1b48 on the third
+child contains 7 files / 336 additions + 21 deletions (357 authored changes).
+ASSESS base 443fe8f returns native medium, verification high via item-2 escalation,
+reviewDue false/under_budget. Independent verifier already covered its exact
+Validate/Encode code and tests; no additional native review is due or claimed.
+T2 complete. T3 records the assessment/proof closure in a docs-only checkpoint;
+final branch graph, range whitespace, remote nonpublication and clean worktree
+readback remain. No product behavior changed after the independent PASS.
+L27: Final metadata readback confirms the ordered local chain b0c3126 → ae1b6ca
+→ 443fe8f → 9415918, based on merged main a2db220. Pinned-baseline range
+whitespace check passed. No remote feat/evidence-contract-v1* branch exists;
+issue #2 remains OPEN. Before the final docs-only checkpoint, the only working
+diff was this task log; all product source/tests/fixtures/docs were committed.
+All T1-T3 requirements and observed proof are complete locally. Final checkpoint
+records these facts without changing product behavior; user-facing delivery
+must report its returned commit and clean-worktree readback, not infer a merge.
+L28: Remaining limitations are explicit, not failed checks: no CLI/analyzer/
+executor, no remote CI evidence, no native Linux/macOS execution, no universal
+secret detector, no chosen license. Initial semantic code-before-tests remains
+a process deviation despite genuine later RED/GREEN. Review workload remains
+863 / 1,080 / 357 changed lines for the three coherent code slices, plus tracker
+and closure bookkeeping. Publication, draft tracker/child PRs, merge and issue
+closure require user authorization; none was performed for issue #2.
