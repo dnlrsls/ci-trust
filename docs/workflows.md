@@ -53,12 +53,16 @@ stays an expression and yields `UNKNOWN`; no interpreter is invoked.
 `STATICALLY_INELIGIBLE` is a known static exclusion, **not a historical skip**.
 `CONDITIONAL` means event filters or successful completion of an eligible needs
 job still constrain the path. Missing dependencies and cycles are `UNKNOWN`.
-Unsupported conditions remain unknown even if they resemble scheduler functions.
+Unsupported job conditions remain unknown even when a dependency is statically
+ineligible: status functions such as `always()` may change dependency semantics,
+so the analyzer does not collapse these expressions into definite exclusion.
 Needs eligibility is conservative: no failure-result/success-function emulation.
 
 Literal matrix axes use Cartesian expansion, partial-match exclusion, then
 include augmentation of compatible original combinations. Include-only entries
 are supported; include-added entries are never reused as original combinations.
+Each combination retains the source of the declaration actually applied to it;
+an incompatible include cannot overwrite another combination's literal source.
 Scalar strings, finite numbers and booleans are supported, with typed matching;
 objects, nulls, dynamic expressions and invalid shapes stay unknown. Numeric
 matching uses finite IEEE-754 values. There is no cross-host coverage inference:
@@ -72,7 +76,12 @@ Defaults for step shell and working directory follow job then workflow
 non-blocking configuration, never required-check enforcement. Cancellation and
 fail-fast are configuration, not evidence of historical cancellation.
 
-Only exact single-line `npm test` and `npm run NAME` commands are linked. They
+Only exact single-line `npm test` and `npm run NAME` commands are linked.
+Token separators must be ASCII space/tab. Unicode whitespace, control characters
+(other than tab and line-end CR/LF), invisible format characters and internal
+newlines produce a source-backed `unsupported-command-separator` diagnostic and
+no link. Harmless leading/trailing ASCII whitespace and line ends are allowed;
+separator admission happens before trimming. They
 must match both an inventory root's working directory and that root's
 `package.json` script symbol, with a `CONFIGURED` discovery candidate. Chains,
 flags, expressions, missing definitions and unresolved/cyclic discovery

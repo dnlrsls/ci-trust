@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/dnlrsls/ci-trust/internal/discovery"
 	"go.yaml.in/yaml/v3"
@@ -444,6 +445,11 @@ func (p *parser) workflow(n *yaml.Node, inventory discovery.Result) Workflow {
 				}
 				s = combine(s, d)
 			}
+			// Unsupported job conditions may override dependency status semantics.
+			// Keep them unresolved instead of emulating always()/success()/etc.
+			if conditionValue(j.Condition, e.Name) == Unknown {
+				s = Unknown
+			}
 			marks[i] = 2
 			j.Eligibility[e.Name] = s
 			for k := range j.Steps {
@@ -528,10 +534,14 @@ func (p *parser) links(s Step, inventory discovery.Result) []Link {
 		p.diag("inventory-limit", nil)
 		return nil
 	}
-	if (s.RunValue.State == Unknown && s.RunValue.Source.Line > 0) || (s.WorkingDirectory.State == Unknown && s.WorkingDirectory.Source.Line > 0) || (s.Shell.State == Unknown && s.Shell.Source.Line > 0) || s.Run == "" || s.Uses != "" || strings.ContainsAny(strings.TrimSpace(s.Run), "\r\n") || dynamic(s.Run) || dynamic(s.WorkingDirectory.Raw) {
+	words, supportedSeparators := commandWords(s.Run)
+	if !supportedSeparators {
+		p.at("unsupported-command-separator", s.RunValue.Source)
 		return nil
 	}
-	words := strings.Fields(s.Run)
+	if (s.RunValue.State == Unknown && s.RunValue.Source.Line > 0) || (s.WorkingDirectory.State == Unknown && s.WorkingDirectory.Source.Line > 0) || (s.Shell.State == Unknown && s.Shell.Source.Line > 0) || s.Run == "" || s.Uses != "" || dynamic(s.Run) || dynamic(s.WorkingDirectory.Raw) {
+		return nil
+	}
 	if len(words) < 2 || words[0] != "npm" {
 		return nil
 	}
@@ -612,9 +622,34 @@ func (p *parser) links(s Step, inventory discovery.Result) []Link {
 	return links
 }
 
+// commandWords admits only the documented ASCII token separators. Inspect the
+// original text before trimming so Unicode/control whitespace at edges cannot
+// manufacture a supported command. CR/LF remain harmless only at line ends.
+func commandWords(raw string) ([]string, bool) {
+	for _, r := range raw {
+		if r == ' ' || r == '\t' || r == '\r' || r == '\n' {
+			continue
+		}
+		if unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return nil, false
+		}
+	}
+	trimmed := strings.Trim(raw, " \t\r\n")
+	if strings.ContainsAny(trimmed, "\r\n") {
+		return nil, false
+	}
+	return strings.FieldsFunc(trimmed, func(r rune) bool { return r == ' ' || r == '\t' }), true
+}
+
+// matrixCell keeps comparison identity separate from declaration provenance.
+// Equal literals from separate includes must never share a mutable source slot.
+type matrixCell struct {
+	token string
+	value Value
+}
+
 func (p *parser) matrix(n *yaml.Node) Matrix {
 	out := Matrix{Source: p.source(n), State: Configured}
-	literals := map[string]Value{}
 	if n == nil {
 		out.Combinations = []map[string]string{{}}
 		out.Literals = []map[string]Value{{}}
@@ -624,7 +659,7 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 	if n.Kind != yaml.MappingNode || dynamic(text(n)) {
 		return fail("unresolved-matrix")
 	}
-	combos := []map[string]string{{}}
+	combos := []map[string]matrixCell{{}}
 	axes := map[string]bool{}
 	for i := 0; i < len(n.Content); i += 2 {
 		k, v := n.Content[i].Value, n.Content[i+1]
@@ -641,7 +676,7 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 		if len(v.Content) > p.options.MaxMatrix/len(combos) {
 			return fail("matrix-limit")
 		}
-		var next []map[string]string
+		var next []map[string]matrixCell
 		for _, base := range combos {
 			for _, val := range v.Content {
 				if !literal(val) {
@@ -649,14 +684,13 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 				}
 				c := clone(base)
 				token := literalToken(val)
-				literals[k+"\x00"+token] = p.value(val, "matrix")
-				c[k] = token
+				c[k] = matrixCell{token: token, value: p.value(val, "matrix")}
 				next = append(next, c)
 			}
 		}
 		combos = next
 	}
-	entries := func(key string) ([]map[string]string, bool) {
+	entries := func(key string) ([]map[string]matrixCell, bool) {
 		v := field(n, key)
 		if v == nil {
 			return nil, true
@@ -664,12 +698,12 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 		if v.Kind != yaml.SequenceNode || len(v.Content) > p.options.MaxMatrix {
 			return nil, false
 		}
-		var entries []map[string]string
+		var entries []map[string]matrixCell
 		for _, e := range v.Content {
 			if e.Kind != yaml.MappingNode || len(e.Content) > 64 {
 				return nil, false
 			}
-			m := map[string]string{}
+			m := map[string]matrixCell{}
 			for i := 0; i < len(e.Content); i += 2 {
 				if !literal(e.Content[i+1]) {
 					return nil, false
@@ -677,8 +711,7 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 				key := e.Content[i].Value
 				val := e.Content[i+1]
 				token := literalToken(val)
-				literals[key+"\x00"+token] = p.value(val, "matrix")
-				m[key] = token
+				m[key] = matrixCell{token: token, value: p.value(val, "matrix")}
 			}
 			entries = append(entries, m)
 		}
@@ -692,13 +725,13 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 	if !ok {
 		return fail("invalid-matrix")
 	}
-	var original []map[string]string
+	var original []map[string]matrixCell
 	for _, c := range combos {
 		excluded := false
 		for _, ex := range excludes {
 			match := true
 			for k, v := range ex {
-				if got, ok := c[k]; !ok || got != v {
+				if got, ok := c[k]; !ok || got.token != v.token {
 					match = false
 				}
 			}
@@ -726,7 +759,7 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 		for i, base := range original {
 			compatible := true
 			for k, v := range inc {
-				if axes[k] && base[k] != v {
+				if axes[k] && base[k].token != v.token {
 					compatible = false
 				}
 			}
@@ -750,8 +783,9 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 			return fail("matrix-output-limit")
 		}
 		values := map[string]Value{}
+		combination := map[string]string{}
 		for k, v := range c {
-			values[k] = literals[k+"\x00"+v]
+			values[k] = v.value
 			if values[k].State == Unknown {
 				return fail("matrix-output-limit")
 			}
@@ -759,11 +793,11 @@ func (p *parser) matrix(n *yaml.Node) Matrix {
 			if p.matrixBytes > 8<<20 {
 				return fail("matrix-byte-limit")
 			}
-			c[k] = values[k].Raw
+			combination[k] = values[k].Raw
 		}
 		out.Literals = append(out.Literals, values)
+		out.Combinations = append(out.Combinations, combination)
 	}
-	out.Combinations = combos
 	return out
 }
 func literal(n *yaml.Node) bool {
@@ -787,8 +821,8 @@ func literalToken(n *yaml.Node) string {
 	}
 	return n.Tag + "\x00" + n.Value
 }
-func clone(m map[string]string) map[string]string {
-	out := map[string]string{}
+func clone[T any](m map[string]T) map[string]T {
+	out := map[string]T{}
 	for k, v := range m {
 		out[k] = v
 	}
