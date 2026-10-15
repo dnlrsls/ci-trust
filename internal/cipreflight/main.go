@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -108,9 +109,11 @@ func capture(command, format string) ([]byte, error) {
 	defer cancel()
 	c := exec.CommandContext(ctx, "docker", "--host="+endpoint, "--config="+config, command, "--format", format)
 	c.Env = []string{"PATH=" + os.Getenv("PATH"), "LANG=C"}
-	c.Stderr = io.Discard
-	output := &bounded{remaining: 64 << 10}
-	c.Stdout = output
+	// Descendant-held pipes cannot extend collection indefinitely after exit or cancellation.
+	c.WaitDelay = 200 * time.Millisecond
+	output := &budget{remaining: 64 << 10}
+	c.Stdout = stream{output, true}
+	c.Stderr = stream{output, false}
 	if err := c.Run(); err != nil {
 		return nil, err
 	}
@@ -120,18 +123,29 @@ func capture(command, format string) ([]byte, error) {
 	return output.data, nil
 }
 
-type bounded struct {
+// Both streams share a synchronized quota; only stdout is retained for parsing.
+type budget struct {
+	sync.Mutex
 	data      []byte
 	remaining int
 	overflow  bool
 }
+type stream struct {
+	budget *budget
+	retain bool
+}
 
-func (b *bounded) Write(p []byte) (int, error) {
+func (s stream) Write(p []byte) (int, error) {
+	b := s.budget
+	b.Lock()
+	defer b.Unlock()
 	if len(p) > b.remaining {
 		b.overflow = true
 		return 0, errors.New("metadata output limit")
 	}
-	b.data = append(b.data, p...)
+	if s.retain {
+		b.data = append(b.data, p...)
+	}
 	b.remaining -= len(p)
 	return len(p), nil
 }

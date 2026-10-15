@@ -8,8 +8,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 var program, dockerFixture string
@@ -32,30 +34,11 @@ func TestMain(m *testing.M) {
 		}
 	}
 	build(program, ".")
-	fake := filepath.Join(dir, "fake.go")
-	if err = os.WriteFile(fake, []byte(fakeDocker), 0600); err != nil {
-		panic(err)
-	}
-	build(dockerFixture, fake)
+	build(dockerFixture, "./testdata/fakedocker.go")
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }
-
-// This owned fake records every process invocation. It never contacts Docker.
-const fakeDocker = `package main
-import("encoding/json";"fmt";"os";"strings";"time")
-func main(){
- f,e:=os.OpenFile("calls",os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600);if e!=nil{panic(e)}
- json.NewEncoder(f).Encode(map[string]any{"args":os.Args[1:],"env":os.Environ()});f.Close()
- b,_:=os.ReadFile("scenario");mode:=string(b)
- if mode=="unavailable"{fmt.Fprintln(os.Stderr,"SECRET-MARKER infrastructure details");os.Exit(9)}
- if mode=="malformed"{fmt.Print("SECRET-MARKER not json");return}
- if mode=="oversize"{fmt.Print(strings.Repeat("x",128<<10));return}
- if mode=="timeout"{time.Sleep(5*time.Second);return}
- for _,a:=range os.Args[1:]{if a=="version"{fmt.Print("{\"Version\":\"28.3.3\",\"Os\":\"linux\",\"Arch\":\"amd64\",\"Secret\":\"SECRET-MARKER\"}");return}}
- fmt.Print("{\"OSType\":\"linux\",\"Architecture\":\"x86_64\",\"CgroupVersion\":\"2\",\"NCPU\":4,\"MemTotal\":8589934592,\"MemoryLimit\":true,\"SwapLimit\":true,\"PidsLimit\":true,\"CpuCfsQuota\":true,\"Name\":\"SECRET-MARKER\",\"Labels\":[\"SECRET-MARKER\"]}")
-}`
 
 const suffix = `,"missing":["production backend and immutable adapter catalog","authenticated current-plan consent boundary","real isolation, resource, cancellation and cleanup proof"]}` + "\n"
 const runtimeJSON = `{"version":"28.3.3","os":"linux","architecture":"amd64","reported_cgroup_version":"2","reported_cpus":4,"reported_memory_bytes":8589934592,"reported_memory_limit":true,"reported_swap_limit":true,"reported_pids_limit":true,"reported_cpu_quota":true}`
@@ -73,6 +56,8 @@ func TestPublicPreparation(t *testing.T) {
 		{name: "malformed", mode: "malformed", calls: 1, reason: "invalid Docker metadata"},
 		{name: "bounded-output", mode: "oversize", calls: 1, reason: "version metadata unavailable"},
 		{name: "bounded-time", mode: "timeout", calls: 1, reason: "version metadata unavailable"},
+		{name: "descendant-output-handles", mode: "pipes", calls: 1, reason: "version metadata unavailable"},
+		{name: "stderr-budget", mode: "stderr-budget", calls: 1, reason: "version metadata unavailable"},
 		{name: "nonempty-config", mode: "metadata", badConfig: true, reason: "client configuration is not an empty directory"},
 		{name: "invalid-argument", mode: "metadata", args: []string{"--approve"}, code: 2, stderr: "usage: cipreflight [--help]\nMetadata only; never starts containers or requests consent.\n"},
 		{name: "help", mode: "metadata", args: []string{"--help"}, stdout: "usage: cipreflight [--help]\nMetadata only; never starts containers or requests consent.\n"},
@@ -102,6 +87,29 @@ func TestPublicPreparation(t *testing.T) {
 				if e = os.WriteFile(filepath.Join(cfg, "credential"), []byte("SECRET-MARKER"), 0600); e != nil {
 					t.Fatal(e)
 				}
+			}
+			if tc.mode == "pipes" {
+				done := filepath.Join(filepath.Dir(dockerFixture), "descendant-done")
+				spec, e := json.Marshal(struct{ Executable, Done string }{dockerFixture, done})
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = os.WriteFile(filepath.Join(root, "child-spec"), spec, 0600); e != nil {
+					t.Fatal(e)
+				}
+				t.Cleanup(func() {
+					deadline := time.Now().Add(3 * time.Second)
+					for {
+						if _, e := os.Stat(done); e == nil {
+							return
+						}
+						if time.Now().After(deadline) {
+							t.Error("owned descendant cleanup not observed")
+							return
+						}
+						time.Sleep(20 * time.Millisecond)
+					}
+				})
 			}
 			before := snapshot(t, root)
 			c := exec.Command(program, tc.args...)
@@ -146,6 +154,11 @@ func TestPublicPreparation(t *testing.T) {
 			if len(lines) != tc.calls {
 				t.Fatalf("calls=%d want=%d: %s", len(lines), tc.calls, raw)
 			}
+			wantEnv := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "LANG=C"}
+			if runtime.GOOS == "windows" {
+				wantEnv = append(wantEnv, "SYSTEMROOT="+os.Getenv("SYSTEMROOT"))
+			}
+			sort.Strings(wantEnv)
 			for i, line := range lines {
 				var call struct{ Args, Env []string }
 				if e = json.Unmarshal(line, &call); e != nil {
@@ -159,10 +172,9 @@ func TestPublicPreparation(t *testing.T) {
 				if fmt.Sprint(call.Args) != fmt.Sprint(wantArgs) {
 					t.Fatalf("unsafe arguments: %q", call.Args)
 				}
-				for _, v := range call.Env {
-					if strings.Contains(v, "SECRET-MARKER") || strings.HasPrefix(v, "HOME=") || strings.HasPrefix(v, "DOCKER_") {
-						t.Fatalf("client inherited private configuration: %q", v)
-					}
+				sort.Strings(call.Env)
+				if fmt.Sprint(call.Env) != fmt.Sprint(wantEnv) {
+					t.Fatalf("client environment differs from complete allowlist: got %q want %q", call.Env, wantEnv)
 				}
 			}
 			if strings.Contains(out.String()+err.String(), "SECRET-MARKER") {

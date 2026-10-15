@@ -4,7 +4,7 @@ The manually dispatched **Isolation preparation metadata (NOT proof)** workflow 
 
 ## What runs
 
-`go run ./internal/cipreflight` invokes only Docker's built-in `version` and `info` commands against the explicit `unix:///var/run/docker.sock` endpoint. It forwards only PATH and a fixed locale, uses an explicitly prepared empty `.git/ci-trust-preflight-empty` configuration directory, never loads a user's Docker context, and discards raw client diagnostics. Each call has a three-second deadline and a 64 KiB output limit. No shell interpolation, target argument, credentials, container/image command, build, pull or fixture execution is supported.
+`go run ./internal/cipreflight` invokes only Docker's built-in `version` and `info` commands against the explicit `unix:///var/run/docker.sock` endpoint. It forwards only PATH and a fixed locale, uses an explicitly prepared empty `.git/ci-trust-preflight-empty` configuration directory, never loads a user's Docker context, and discards raw client diagnostics. Each call has a three-second execution deadline, an additional 200 ms maximum pipe-drain wait, and one shared 64 KiB stdout-plus-stderr budget. Only stdout is retained; diagnostic bytes still consume the budget. No shell interpolation, target argument, credentials, container/image command, build, pull or fixture execution is supported.
 
 The workflow explicitly creates project-owned scratch/configuration directories. The helper itself does not write files. Its public-process tests use an owned fake Docker executable; those tests are not daemon or isolation proof.
 
