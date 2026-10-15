@@ -37,11 +37,12 @@ No installation or licensed release/distribution is claimed.
   **1** means operational failure; **2** means invalid invocation. Report input is
   bounded to 8 MiB; interactive stdin is refused.
 
-**Status: implemented local audit/report slice, not a complete MVP.** The
-[observed demo](docs/audit-demo.md) records Windows/amd64 results, input immutability,
-JSON/report parity and a bounded source self-audit. Linux/macOS and remote CI proof
-are not yet observed. Declared platform targets and cross-builds do not prove
-execution on those hosts. Independent corpus acceptance remains separate work.
+**Status: implemented audit/report slice, not a complete MVP.** The
+[observed demo](docs/audit-demo.md) records input immutability, report parity and a
+bounded historical self-audit. [Native CI receipts](docs/portable-ci.md) record
+independently accepted public cases passing on Linux, Windows and macOS at the
+exact tested revision. This is execution of CI Trust's own tests, not execution
+or enforcement evidence for the workflows it audits.
 
 ## Read next
 

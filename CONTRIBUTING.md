@@ -74,8 +74,9 @@ commands do not prove global non-execution. Generic TEST intent does not prove
 unit/integration/E2E completeness; runner OS does not establish cross-build execution.
 Record actual Linux/Windows/macOS run/job receipts for the tested revision, or mark
 them unavailable. Library tests, mocks and cross-builds are not portable or isolation
-proof. Full independent corpus acceptance and remote three-host evidence remain
-issue #7 work; the local demo alone does not close it.
+proof. The [recorded native receipt](docs/portable-ci.md) binds independently
+accepted cases to actual jobs and source; preserve that distinction for future
+changes. The local demo alone never substitutes for portable execution.
 
 ## Safety and future scope
 

@@ -110,8 +110,9 @@ supply commit/repository identity; the checkpoint above was recorded separately.
 
 - Full independent A–F/correct/omitted/malformed public acceptance, reviewed byte
   oracles, deterministic/rejection cases and immutability across that corpus.
-- Actual Linux/Windows/macOS public-binary run/job receipts for the final tested
-  revision. Prepared CI or local unit/service tests are not those receipts.
+- This historical Windows demo did not supply Linux/macOS proof. Subsequent
+  [native receipts](portable-ci.md) cover the integrated public cases; prepared
+  CI or local unit/service tests alone still do not supply those receipts.
 - Controlled verification: no production Docker backend/trusted image catalog or
   real isolation proof is available. `verify`/`bootstrap` remain future commands;
   no shell fallback, implicit consent, provisioning or apply behavior is permitted.
