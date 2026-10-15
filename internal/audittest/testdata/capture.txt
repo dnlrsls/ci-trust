@@ -1,0 +1,4 @@
+Serialization runtime source checkpoint: 624a6ffd6e9ad100fd7f3f3ee57f5cbda336be65
+Initial capture baseline: 167d095b5da816a7c296b1e2deb8d27915ddf239
+Independent local acceptance: PASS; settled review mv99t3xt-t-4e08, B1-only recheck mv9a3vtc-u-5fhj.
+External Linux/Windows/macOS CI: PENDING; no target workflow execution is inferred.
