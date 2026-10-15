@@ -1,73 +1,91 @@
 # Contributing to CI Trust
 
-Start with the [architecture](docs/architecture.md) and the
-[CLI contract](docs/cli.md). The Go libraries are the evidence contract under internal/evidence and bounded
-static inventory under internal/discovery; no CLI executable exists yet.
+Start with the [architecture](docs/architecture.md), [CLI contract](docs/cli.md)
+and [observed audit/report demo](docs/audit-demo.md). The public executable now
+binds static discovery, workflow analysis and rule evaluation to the evidence
+contract. It does not execute the repository being audited.
 
-## Local checks
+## Build and local checks
 
-Use Go 1.26 (module language version 1.26.0). The implementation environment is
-Go 1.26.4 on Windows/amd64; this does not establish Linux/macOS behavior.
-Dependencies are pinned in go.mod/go.sum. Initial module download needs network;
-contract validation itself never fetches schemas or contacts remote services.
+Use Go 1.26 (module language version 1.26.0). The recorded demo used Go 1.26.4
+on Windows/amd64; this does not establish Linux/macOS behavior. Dependencies are
+pinned in go.mod/go.sum; first acquisition may require network, unlike audit/report.
 
-- Run the suite: go test ./...
-- Run static checks: go vet ./...
-- Check formatting: gofmt -l internal/evidence
+```sh
+go build -o ci-trust ./cmd/ci-trust
+./ci-trust --help
+./ci-trust --version
+```
 
-Git attributes keep Go sources and JSON contract/golden fixtures at LF,
-including Windows checkouts with core.autocrlf enabled. Fixture mutations and
-canonical golden assertions are byte-exact. Preserve these rules; do not
-normalize away contract or canonical-output differences in assertions.
+Use `ci-trust.exe` on Windows. See the [README](README.md) for formats, platforms
+and exits. `audit PATH` requires an explicit path; `report --input FILE|-` validates
+saved data without rescanning. Findings and UNKNOWN still return 0, operational
+errors return 1, invalid invocation returns 2. JSON stdout is one document and
+diagnostics use stderr. No execution, network or hidden storage is involved.
 
-Read the [schema contract](docs/evidence-contract.md) and
-[evidence rules](docs/evidence-semantics.md) before changing fixtures. Schema
-validation and semantic validation are both required; neither proves evidence
-truth. No licensed distribution until the maintainer chooses a license.
+For source changes, run focused tests first, then applicable broader checks:
+
+```sh
+go test ./...
+go vet ./...
+gofmt -l cmd internal
+```
+
+These are contributor commands, **not commands executed for the documentation
+demo**. No full suite, fixture validator or third-party pipeline was run for that
+unit. See its exact observed scope rather than treating these examples as receipts.
+
+Git attributes keep Go and contract/corpus fixture bytes at LF, including Windows
+checkouts with core.autocrlf enabled. Preserve byte-exact canonical assertions;
+do not normalize away output differences. Read the [schema contract](docs/evidence-contract.md)
+and [evidence semantics](docs/evidence-semantics.md) before changing fixtures.
+Schema and semantic admissibility do not independently prove evidence truth.
 
 ## Working conventions
 
 - Keep technical documentation, identifiers and code comments in English.
-- Keep changes scoped to an agreed issue; document evidence and limitations
-  alongside the behavior. Use Conventional Commit messages when commits are made.
-- Use small explicit Go packages, standard formatting and minimal reviewed
-  dependencies. Do not introduce a plugin framework or a public API prematurely.
-- Proposed implementation layout: cmd/ci-trust for CLI wiring, internal packages
-  for model/discovery/workflows/rules/rendering and testdata for owned fixtures.
-  Names may be refined when #2 establishes contracts; no directories or API
-  exports are created by this proposal.
-- Separate Core logic from terminal I/O, consent and process control. The Core
-  must not depend on an agent, LLM, Gentle Shell or an online service.
-- The baseline is Go 1.26 with the pure-Go JSON Schema validator pinned in
-  go.mod. No YAML parser or CLI framework is selected yet. New dependencies
-  require a concrete need and compatible distribution assumptions.
+- Scope work to an agreed issue, with evidence and limitations alongside behavior.
+  Use Conventional Commit messages when commits are authorized.
+- Keep packages explicit: `cmd/ci-trust` wires the binary; `internal/cli` handles
+  I/O/rendering; `internal/audit` produces reports from discovery/workflow data.
+  Preserve the existing evidence contract rather than inventing a parallel schema.
+- Keep Core independent of agents, LLMs, terminal I/O and process control.
+  YAML parsing and terminal detection dependencies are already pinned; new
+  dependencies need concrete justification and distribution review.
 
 ## Verification expectations
 
-For testable behavior, first observe a failing focused test, then implement and
-run it plus the applicable suite. Go's standard test tooling is the baseline.
-Contract tests exercise exported internal library boundaries. There is no
-executable yet: library tests are not CLI, isolation or remote CI evidence.
+For testable changes, observe a focused failing behavior test before implementation,
+then run it and applicable checks. Passive documentation has no meaningful RED;
+check links, examples, scope claims and whitespace instead.
 
-Define fixture expectations independently of analyzer output. Public-interface
-checks must cover exit status, exact stdout/stderr, no execution during audit,
-source immutability and deterministic serialization. Preserve unknowns instead
-of promoting configuration into execution, efficacy or enforcement.
+Author fixture expectations independently before capturing analyzer output. Review
+whole-report byte candidates against those expectations, never use analyzer output
+as its own semantic oracle. Public binary checks must record exact exit/stdout/stderr,
+report file/stdin parity, deterministic serialization, input hashes and sentinel
+counters before/after, including rejected inputs. Keep output and helpers in owned
+scratch space; do not execute fixture scripts or copy scratch reports into docs.
+See the [corpus contract and action-pin policy](docs/audit-fixtures.md).
+Action updates require official identity verification and review of immutable pins,
+not silent moving-tag changes or additional unreviewed CI.
 
-Cross-builds do not establish host behavior. Record observed Linux/Windows/macOS
-results or explicitly mark missing evidence. Real controlled verification requires
-the approved isolation boundary; unit mocks cannot replace isolation proof.
+Configuration, observed execution, efficacy and enforcement are distinct. Unlinked
+commands do not prove global non-execution. Generic TEST intent does not prove
+unit/integration/E2E completeness; runner OS does not establish cross-build execution.
+Record actual Linux/Windows/macOS run/job receipts for the tested revision, or mark
+them unavailable. Library tests, mocks and cross-builds are not portable or isolation
+proof. Full independent corpus acceptance and remote three-host evidence remain
+issue #7 work; the local demo alone does not close it.
 
-For documentation-only changes, check local links, command examples against the
-written contract, consistency with the owning issues and whitespace. Runtime
-RED/GREEN is not meaningful without executable behavior.
+## Safety and future scope
 
-## Safety and license
+Never run audited scripts, hooks, package managers or actions. Treat input as
+untrusted and preserve traversal/parsing bounds. Do not fetch remote evidence or
+add auto-fix/apply behavior. `verify` and `bootstrap` remain future commands.
+Controlled verification has no production Docker backend/trusted image catalog;
+no runtime provisioning, automatic consent or unsandboxed fallback is authorized.
+A later Gentleman-Programming/engram study is opt-in and revision-pinned, uses only
+generic adapters and makes no upstream writes. No such study has been run here.
 
-Never run an audited repository's scripts, hooks, package managers or actions.
-Treat input files as untrusted; bound parsing and traversal. Do not fetch remote
-evidence during static audit. No auto-fix/apply mode belongs to the MVP.
-
-No license is selected. Do not add a license header, grant or claim an open-source
-license on behalf of the maintainer. Licensed distribution waits for an explicit
-license choice.
+No license is selected. Do not grant a license or claim licensed release/distribution
+on the maintainer's behalf.

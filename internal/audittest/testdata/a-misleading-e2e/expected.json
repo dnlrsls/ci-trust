@@ -1,0 +1,10 @@
+{
+  "case_id":"a-misleading-e2e", "requirements":["S7 A","S5 no name-based coverage"],
+  "sources":[".github/workflows/ci.yml"],
+  "required_rule_ids":["CIT_DECLARATION_UNKNOWN","CIT_REQUIRED_CHECKS_UNKNOWN"], "forbidden_rule_ids":["CIT_PLATFORM_CONFIGURED_GAP"],
+  "observations":[{"state":"CONFIGURED","scope":"push job e2e","provenance":"ci.yml jobs.e2e.name and steps[0].run","meaning":"Job named E2E configures echo only; neither name nor echo establishes functional E2E coverage."}],
+  "forbidden_claims":["Functional E2E coverage","E2E passed","No E2E testing exists anywhere"],
+  "unknowns":["Declared platforms","Historical execution","Required checks and enforcement"],
+  "limitations":["No special name-only finding ID required; reject unsupported coverage attribution"],
+  "public_audit":{"exit":0,"json_stdout":"one schema-valid document","stderr":"DECLARATION_UNKNOWN: Static analysis could not resolve this input; no execution or enforcement is inferred.\n","exact_rendering":"UNMET: later whole-report byte oracle binding","observed":false}
+}
