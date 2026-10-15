@@ -49,6 +49,15 @@ not cause dependency resolution, lifecycle hooks, installation or network access
 Unsupported-stack markers include Python, Cargo and Maven inputs; detection does
 not claim an adapter for their tooling. No submodules or remote actions are fetched.
 
+The reader also admits exact root `.github/workflows/*.yml` / `*.yaml` files and
+root `.ci-trust.json`, under the same entry/depth/byte budgets and confinement.
+Nested workflow directories, workflows under nested repository roots, arbitrary
+YAML and nested support declarations are not admitted by these extra rules.
+Workflow YAML bypasses generic manifest/tool-marker analysis, even if named
+`pnpm-lock.yaml`; declarations likewise create no tool or command candidates.
+Separate static workflow and declaration analyzers consume the retained bytes.
+Admission is not YAML/JSON validity, CI execution or declared support proof.
+
 ## Finite bounds and exclusions
 
 Zero-valued options select these defaults; invalid/excessive limits return

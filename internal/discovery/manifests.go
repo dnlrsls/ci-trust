@@ -144,7 +144,7 @@ func Analyze(snapshot Snapshot, options Options) Result {
 		}
 		delete(valid, d.Path)
 		base := path.Base(d.Path)
-		if base != "go.mod" && base != "package.json" {
+		if workflowDocument(d.Path) || (base != "go.mod" && base != "package.json") {
 			continue
 		}
 		stack := "npm"
@@ -234,7 +234,7 @@ func Analyze(snapshot Snapshot, options Options) Result {
 			return fail("output_limit")
 		}
 		base := path.Base(d.Path)
-		if base == "go.mod" || base == "package.json" || !safePath(d.Path) {
+		if workflowDocument(d.Path) || base == "go.mod" || base == "package.json" || !safePath(d.Path) {
 			continue
 		}
 		owners := roots[path.Dir(d.Path)]

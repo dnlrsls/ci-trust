@@ -6,9 +6,10 @@ import (
 	"path"
 	"runtime"
 	"sort"
+	"strings"
 )
 
-// ReadSnapshot reads only known static markers, never evaluating their contents.
+// ReadSnapshot reads known static markers and root workflow YAML without evaluation.
 // Zero limits use defaults. Shared hard caps are depth/script depth 64,
 // entries 65536, reference edges 4096, individual bytes 16 MiB and aggregate 64 MiB. Directory
 // enumeration is incremental; an overflowing directory is omitted in full rather
@@ -130,7 +131,7 @@ func ReadSnapshot(rootPath string, options Options) Snapshot {
 				add("SPECIAL_FILE_SKIPPED", p, "Non-regular entry omitted.")
 				continue
 			}
-			if !markers[entry.Name()] {
+			if !markers[entry.Name()] && !workflowDocument(p) && p != ".ci-trust.json" {
 				continue
 			}
 			if total >= options.MaxTotalBytes {
@@ -188,4 +189,9 @@ func ReadSnapshot(rootPath string, options Options) Snapshot {
 		return a.Code < b.Code
 	})
 	return s
+}
+
+// workflowDocument keeps workflow YAML separate from manifest/tool marker analysis.
+func workflowDocument(p string) bool {
+	return path.Dir(p) == ".github/workflows" && (strings.HasSuffix(p, ".yml") || strings.HasSuffix(p, ".yaml"))
 }
