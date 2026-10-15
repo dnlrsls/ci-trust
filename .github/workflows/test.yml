@@ -2,7 +2,7 @@ name: Portable Go tests
 
 'on':
   push:
-    branches: [main]
+    branches: [main, 'feat/mvp-public-driven']
   pull_request:
   workflow_dispatch:
 
