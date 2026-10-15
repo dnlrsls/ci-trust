@@ -1,8 +1,8 @@
 # Contributing to CI Trust
 
 Start with the [architecture](docs/architecture.md) and the
-[CLI contract](docs/cli.md). The first Go unit is the evidence contract and
-validator under internal/evidence; no CLI executable exists yet.
+[CLI contract](docs/cli.md). The Go libraries are the evidence contract under internal/evidence and bounded
+static inventory under internal/discovery; no CLI executable exists yet.
 
 ## Local checks
 
@@ -15,9 +15,10 @@ contract validation itself never fetches schemas or contacts remote services.
 - Run static checks: go vet ./...
 - Check formatting: gofmt -l internal/evidence
 
-Git attributes keep Go sources and byte-exact canonical golden fixtures at LF,
-including Windows checkouts with core.autocrlf enabled. Preserve these rules;
-do not normalize away canonical-output differences in golden assertions.
+Git attributes keep Go sources and JSON contract/golden fixtures at LF,
+including Windows checkouts with core.autocrlf enabled. Fixture mutations and
+canonical golden assertions are byte-exact. Preserve these rules; do not
+normalize away contract or canonical-output differences in assertions.
 
 Read the [schema contract](docs/evidence-contract.md) and
 [evidence rules](docs/evidence-semantics.md) before changing fixtures. Schema

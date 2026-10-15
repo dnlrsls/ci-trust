@@ -1,2 +1,2 @@
 *.go text eol=lf
-/internal/evidence/testdata/golden/*.json text eol=lf
+/internal/evidence/testdata/**/*.json text eol=lf

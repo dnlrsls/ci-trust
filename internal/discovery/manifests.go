@@ -12,24 +12,56 @@ import (
 	"github.com/dnlrsls/ci-trust/internal/evidence"
 )
 
+const maxAnalysisRecords = 4096
+
 // Analyze inventories static declarations only. It never evaluates a command or config.
 func Analyze(snapshot Snapshot, options Options) Result {
 	r := Result{Roots: []Root{}, Tools: []Tool{}, Candidates: []Candidate{}, Diagnostics: []Diagnostic{}, Limitations: []string{}}
+	overflow := false
 	diag := func(code, p string) {
+		if len(r.Roots)+len(r.Tools)+len(r.Candidates)+len(r.Diagnostics)+len(r.Limitations) >= maxAnalysisRecords {
+			overflow = true
+			return
+		}
 		r.Diagnostics = append(r.Diagnostics, Diagnostic{Code: code, Path: p, Message: "Static discovery could not resolve this input.", State: "UNKNOWN"})
 	}
-	defaults := DefaultOptions()
+	var validOptions bool
+	options, validOptions = normalizeOptions(options)
+	if !validOptions {
+		diag("invalid_options", "")
+		return r
+	}
 	values := []int64{int64(options.MaxDepth), int64(options.MaxEntries), options.MaxFileBytes, options.MaxTotalBytes, int64(options.MaxReferences), int64(options.MaxScriptDepth)}
-	defs := []int64{int64(defaults.MaxDepth), int64(defaults.MaxEntries), defaults.MaxFileBytes, defaults.MaxTotalBytes, int64(defaults.MaxReferences), int64(defaults.MaxScriptDepth)}
-	caps := []int64{64, 65536, 16 << 20, 64 << 20, 4096, 64}
-	for i, v := range values {
-		if v < 0 || v > caps[i] {
-			diag("invalid_options", "")
+	// Reject over-budget collections before copying, sorting or inspecting entries.
+	remaining := options.MaxEntries
+	for _, count := range []int{len(snapshot.Documents), len(snapshot.Diagnostics), len(snapshot.Limitations)} {
+		if count > remaining {
+			diag("entry_limit", "")
 			return r
 		}
-		if v == 0 {
-			values[i] = defs[i]
+		remaining -= count
+	}
+	fail := func(code string) Result {
+		return Result{Roots: []Root{}, Tools: []Tool{}, Candidates: []Candidate{},
+			Diagnostics: []Diagnostic{{Code: code, Message: "Static discovery could not resolve this input.", State: "UNKNOWN"}}, Limitations: []string{}}
+	}
+	overOutput := func() bool {
+		return overflow || len(r.Roots)+len(r.Tools)+len(r.Candidates)+len(r.Diagnostics)+len(r.Limitations) > maxAnalysisRecords
+	}
+	if len(snapshot.Diagnostics) > maxAnalysisRecords {
+		return fail("output_limit")
+	}
+	// Byte comparisons/parsing may only see a finite aggregate of bounded files.
+	var inputBytes int64
+	for _, document := range snapshot.Documents {
+		size := int64(len(document.Content))
+		if size > options.MaxFileBytes {
+			continue
 		}
+		if size > options.MaxTotalBytes-inputBytes {
+			return fail("total_limit")
+		}
+		inputBytes += size
 	}
 	for _, d := range snapshot.Diagnostics {
 		p := d.Path
@@ -42,11 +74,21 @@ func Analyze(snapshot Snapshot, options Options) Result {
 	if len(snapshot.Limitations) > 0 {
 		r.Limitations = append(r.Limitations, "Snapshot reported omitted or limited inputs.")
 	}
-	docs := append([]Document(nil), snapshot.Documents...)
-	sort.Slice(docs, func(i, j int) bool {
-		if docs[i].Path == docs[j].Path {
-			return bytes.Compare(docs[i].Content, docs[j].Content) < 0
+	if overOutput() {
+		return fail("output_limit")
+	}
+	docs := make([]Document, 0, len(snapshot.Documents))
+	for _, document := range snapshot.Documents {
+		if !safePath(document.Path) {
+			diag("unsafe_path", "")
+			continue
 		}
+		docs = append(docs, document)
+	}
+	if overOutput() {
+		return fail("output_limit")
+	}
+	sort.Slice(docs, func(i, j int) bool {
 		return docs[i].Path < docs[j].Path
 	})
 	valid := map[string]Document{}
@@ -91,7 +133,11 @@ func Analyze(snapshot Snapshot, options Options) Result {
 	addTool := func(root Root, name string, src Source) {
 		r.Tools = append(r.Tools, Tool{ID: evidence.StableID("tool", root.ID, name, src.Path, src.Symbol), Root: root.ID, Name: name, Source: src, State: "CONFIGURED"})
 	}
+	edges := 0
 	for _, d := range accepted {
+		if overOutput() {
+			return fail("output_limit")
+		}
 		v, ok := valid[d.Path]
 		if !ok || !bytes.Equal(v.Content, d.Content) {
 			continue
@@ -159,34 +205,34 @@ func Analyze(snapshot Snapshot, options Options) Result {
 		}
 		sort.Strings(names)
 		for _, name := range names {
-			src := Source{Path: d.Path, Symbol: name}
-			edges := 0
-			cmd, kind, chain, code := resolveScript(name, scripts, d.Path, map[string]bool{}, 0, int(values[5]), &edges, int(values[4]))
-			c := Candidate{ID: evidence.StableID("candidate", root.ID, name), Root: root.ID, Kind: kind, Command: cmd, Source: src, Chain: chain, State: "CONFIGURED", Origin: "SCRIPT"}
-			if code != "" {
-				c.State = "UNKNOWN"
-				c.Command = ""
-				c.Kind = "unknown"
-				diag(code, d.Path)
-			} else {
-				for _, term := range strings.Split(cmd, " && ") {
-					addTool(root, strings.Fields(term)[0], src)
-				}
+			if overOutput() {
+				return fail("output_limit")
 			}
+			src := Source{Path: d.Path, Symbol: name}
+			leaves, rejectedChain, code := resolveScript(name, scripts, d.Path, map[string]bool{}, 0, int(values[5]), &edges, int(values[4]))
 			if code != "" {
-				r.Candidates = append(r.Candidates, c)
-			} else {
-				for index, term := range strings.Split(cmd, " && ") {
-					leaf := c
-					leaf.Command = term
-					leaf.Kind = leafKind(strings.Fields(term))
-					leaf.ID = evidence.StableID("candidate", root.ID, name, term, strings.Repeat("x", index))
-					r.Candidates = append(r.Candidates, leaf)
+				r.Candidates = append(r.Candidates, Candidate{ID: evidence.StableID("candidate", root.ID, name),
+					Root: root.ID, Kind: "unknown", Source: src, Chain: rejectedChain, State: "UNKNOWN", Origin: "SCRIPT"})
+				diag(code, d.Path)
+				continue
+			}
+			for index, leaf := range leaves {
+				if overOutput() {
+					return fail("output_limit")
 				}
+				fields := strings.Fields(leaf.Command)
+				addTool(root, fields[0], src)
+				r.Candidates = append(r.Candidates, Candidate{
+					ID:   evidence.StableID("candidate", root.ID, name, leaf.Command, strings.Repeat("x", index)),
+					Root: root.ID, Kind: leafKind(fields), Command: leaf.Command, Source: src,
+					Chain: leaf.Chain, State: "CONFIGURED", Origin: "SCRIPT"})
 			}
 		}
 	}
 	for _, d := range accepted {
+		if overOutput() {
+			return fail("output_limit")
+		}
 		base := path.Base(d.Path)
 		if base == "go.mod" || base == "package.json" || !safePath(d.Path) {
 			continue
@@ -213,6 +259,9 @@ func Analyze(snapshot Snapshot, options Options) Result {
 			r.Limitations = append(r.Limitations, "Tool marker has no same-directory owning manifest.")
 		}
 	}
+	if overOutput() {
+		return fail("output_limit")
+	}
 	sort.Slice(r.Roots, func(i, j int) bool { return r.Roots[i].ID < r.Roots[j].ID })
 	sort.Slice(r.Tools, func(i, j int) bool { return r.Tools[i].ID < r.Tools[j].ID })
 	r.Tools = uniqueTools(r.Tools)
@@ -235,10 +284,10 @@ var goVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+(\.[0-9]+)?$`)
 var toolchainVersion = regexp.MustCompile(`^go[0-9]+\.[0-9]+(\.[0-9]+)?$`)
 
 func safePath(p string) bool {
-	return p != "" && p != "." && !strings.ContainsAny(p, "\\:\x00\r\n") && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../")
+	return len(p) <= 4096 && p != "" && p != "." && !strings.ContainsAny(p, "\\:\x00\r\n") && !strings.HasPrefix(p, "/") && path.Clean(p) == p && p != ".." && !strings.HasPrefix(p, "../")
 }
 func safeCode(s string) string {
-	if scriptName.MatchString(s) {
+	if len(s) <= 64 && scriptName.MatchString(s) {
 		return s
 	}
 	return "snapshot_unknown"
@@ -246,9 +295,12 @@ func safeCode(s string) string {
 func moduleLiteral(b []byte) bool {
 	found := false
 	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(strings.SplitN(line, "//", 2)[0])
+		line = strings.Trim(strings.SplitN(line, "//", 2)[0], " \t\r")
 		if line == "" {
 			continue
+		}
+		if !asciiLiteral(line) {
+			return false
 		}
 		f := strings.Fields(line)
 		if f[0] == "module" {
@@ -330,33 +382,49 @@ func walkJSON(d *json.Decoder) error {
 	return err
 }
 
-func resolveScript(name string, scripts map[string]string, p string, active map[string]bool, depth, maxDepth int, edges *int, maxEdges int) (string, string, []Source, string) {
-	chain := []Source{{Path: p, Symbol: name}}
+type resolvedLeaf struct {
+	Command string
+	Chain   []Source
+}
+
+// Only ASCII space/tab are supported shell token separators. Unicode Fields
+// semantics would invent commands that the target shell does not recognize.
+func asciiLiteral(text string) bool {
+	for _, b := range []byte(text) {
+		if b > 126 || (b < 32 && b != '\t') {
+			return false
+		}
+	}
+	return true
+}
+
+func resolveScript(name string, scripts map[string]string, p string, active map[string]bool, depth, maxDepth int, edges *int, maxEdges int) ([]resolvedLeaf, []Source, string) {
+	entry := Source{Path: p, Symbol: name}
+	trace := []Source{entry}
 	if depth >= maxDepth {
-		return "", "", chain, "script_depth_limit"
+		return nil, trace, "script_depth_limit"
 	}
 	if active[name] {
-		return "", "", chain, "cyclic_reference"
+		return nil, trace, "cyclic_reference"
 	}
 	text, ok := scripts[name]
 	if !ok {
-		return "", "", chain, "missing_reference"
+		return nil, trace, "missing_reference"
+	}
+	if !asciiLiteral(text) {
+		return nil, trace, "unsupported_script"
 	}
 	active[name] = true
 	defer delete(active, name)
-	commands := []string{}
-	kind := ""
-	if strings.ContainsAny(text, "\r\n") {
-		return "", "", chain, "unsupported_script"
-	}
+	leaves := []resolvedLeaf{}
 	for _, term := range strings.Split(text, "&&") {
 		fields := strings.Fields(term)
 		if len(fields) == 0 {
-			return "", "", chain, "unsupported_script"
+			return nil, trace, "unsupported_script"
 		}
-		for _, f := range fields {
-			if !literalToken.MatchString(f) && f != "-count=1" {
-				return "", "", chain, "unsupported_script"
+		for _, field := range fields {
+			if !literalToken.MatchString(field) && field != "-count=1" {
+				return nil, trace, "unsupported_script"
 			}
 		}
 		if fields[0] == "npm" {
@@ -368,37 +436,28 @@ func resolveScript(name string, scripts map[string]string, p string, active map[
 				ref = fields[2]
 			}
 			if ref == "" {
-				return "", "", chain, "unsupported_reference"
+				return nil, trace, "unsupported_reference"
 			}
 			*edges++
 			if *edges > maxEdges {
-				return "", "", chain, "reference_limit"
+				return nil, trace, "reference_limit"
 			}
-			cmd, k, ch, code := resolveScript(ref, scripts, p, active, depth+1, maxDepth, edges, maxEdges)
-			chain = append(chain, ch...)
+			children, rejected, code := resolveScript(ref, scripts, p, active, depth+1, maxDepth, edges, maxEdges)
 			if code != "" {
-				return "", "", chain, code
+				return nil, append(trace, rejected...), code
 			}
-			commands = append(commands, cmd)
-			if kind == "" {
-				kind = k
-			} else if kind != k {
-				kind = "composite"
+			for _, child := range children {
+				chain := append([]Source{entry}, child.Chain...)
+				leaves = append(leaves, resolvedLeaf{Command: child.Command, Chain: chain})
 			}
 			continue
 		}
-		k := leafKind(fields)
-		if k == "" {
-			return "", "", chain, "unsupported_script"
+		if leafKind(fields) == "" {
+			return nil, trace, "unsupported_script"
 		}
-		commands = append(commands, strings.Join(fields, " "))
-		if kind == "" {
-			kind = k
-		} else if kind != k {
-			kind = "composite"
-		}
+		leaves = append(leaves, resolvedLeaf{Command: strings.Join(fields, " "), Chain: []Source{entry}})
 	}
-	return strings.Join(commands, " && "), kind, chain, ""
+	return leaves, nil, ""
 }
 func leafKind(f []string) string {
 	start := 1

@@ -6,8 +6,8 @@ A green CI does not necessarily mean a trustworthy CI. CI Trust will explain
 which validations are configured, what execution is observed, what was actually
 verified, and which guarantees remain unknown.
 
-**Status: early MVP.** Go is accepted. The evidence contract is the first Go
-library unit; the audit/analyzer CLI is not implemented. There is no executable,
+**Status: early MVP.** Go is accepted. The evidence contract and bounded Go/npm
+static discovery are Go library units; the audit/analyzer CLI is not implemented. There is no executable,
 installation command, implemented adapter or verified cross-host support yet.
 
 ## Read the design
@@ -17,7 +17,8 @@ installation command, implemented adapter or verified cross-host support yet.
 3. [Proposed CLI contract](docs/cli.md)
 4. [Evidence schema and fixtures](docs/evidence-contract.md)
 5. [Evidence rules, canonicalization and redaction](docs/evidence-semantics.md)
-6. [Contribution guidance](CONTRIBUTING.md)
+6. [Safe static discovery and bounds](docs/discovery.md)
+7. [Contribution guidance](CONTRIBUTING.md)
 
 The Core will operate without agents, LLMs or Gentle Shell. Agents may consume
 the same versioned JSON reports as developers; they are not required to produce
