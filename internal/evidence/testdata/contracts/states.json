@@ -1,0 +1,49 @@
+{
+  "schema_version": "1",
+  "snapshot": {"id": "states", "repository_id": "repo", "commit_sha": null},
+  "inventory": [{"id": "check", "kind": "CHECK", "name": "Fixture checker", "source": {"path": "ci/check.yml", "line": 1, "column": 1}, "evidence_refs": []}],
+  "capabilities": [],
+  "workflows": [],
+  "evidence": [
+    {
+      "id": "configured", "check_id": "check", "state": "CONFIGURED",
+      "scope": {"kind": "REPOSITORY", "subject": "repo"},
+      "provenance": {"kind": "CONFIGURATION", "adapter": "fixture", "sources": [{"path": "ci/check.yml", "line": 1, "column": 1}], "basis": "SOURCE"},
+      "execution": null, "cause": null, "limitations": []
+    },
+    {
+      "id": "bounded-pass", "check_id": "check", "state": "EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "clean"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "ASSERTION"},
+      "execution": {"phase": "VALIDATION", "outcome": "PASS", "os": "LINUX", "environment_id": "env", "tool": {"name": "checker", "version": "1", "configuration_id": "default"}, "fixture_role": "CLEAN"},
+      "cause": null, "limitations": ["Only the named clean fixture was checked; efficacy and enforcement remain unknown."]
+    },
+    {
+      "id": "historical-skip", "check_id": "check", "state": "SKIPPED",
+      "scope": {"kind": "JOB", "subject": "lint"},
+      "provenance": {"kind": "HISTORICAL_RUN", "adapter": "fixture", "sources": [], "basis": "RUNNER"},
+      "execution": null, "cause": null, "limitations": ["Submitted historical observation only."]
+    },
+    {
+      "id": "startup-failure", "check_id": "check", "state": "NOT_EXECUTED",
+      "scope": {"kind": "TOOL_FIXTURE", "subject": "startup"},
+      "provenance": {"kind": "CONTROLLED_RUN", "adapter": "fixture", "sources": [], "basis": "EXIT_STATUS"},
+      "execution": {"phase": "STARTUP", "outcome": "FAIL", "os": null, "environment_id": null, "tool": {"name": null, "version": null, "configuration_id": null}, "fixture_role": null},
+      "cause": {"category": "UNKNOWN", "evidence_refs": [], "limitations": ["Exit status cannot attribute a cause."]},
+      "limitations": ["Intended validation did not execute."]
+    },
+    {
+      "id": "unknown", "check_id": "check", "state": "UNKNOWN",
+      "scope": {"kind": "REPOSITORY", "subject": "repo"},
+      "provenance": {"kind": "DIAGNOSTIC", "adapter": "fixture", "sources": [], "basis": "UNRESOLVED"},
+      "execution": null, "cause": null, "limitations": ["Execution history is unknown."]
+    },
+    {
+      "id": "unverifiable", "check_id": "check", "state": "UNVERIFIABLE",
+      "scope": {"kind": "REPOSITORY", "subject": "repo"},
+      "provenance": {"kind": "DIAGNOSTIC", "adapter": "fixture", "sources": [], "basis": "UNRESOLVED"},
+      "execution": null, "cause": null, "limitations": ["Required history is unavailable."]
+    }
+  ],
+  "findings": [], "diagnostics": [], "limitations": []
+}

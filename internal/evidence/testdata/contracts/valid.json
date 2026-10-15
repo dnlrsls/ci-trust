@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "snapshot": {"id": "snapshot:one", "repository_id": null, "commit_sha": null},
+  "inventory": [{"id": "check:lint", "kind": "CHECK", "name": "Lint", "source": {"path": "ci/check.yml", "line": 1, "column": 1}, "evidence_refs": ["ev:configured"]}],
+  "capabilities": [],
+  "workflows": [],
+  "evidence": [
+    {"id": "ev:configured", "check_id": "check:lint", "state": "CONFIGURED", "scope": {"kind": "REPOSITORY", "subject": "repo"}, "provenance": {"kind": "CONFIGURATION", "adapter": "fixture", "sources": [{"path": "ci/check.yml", "line": 1, "column": 1}], "basis": "SOURCE"}, "execution": null, "cause": null, "limitations": []}
+  ],
+  "findings": [],
+  "diagnostics": [],
+  "limitations": []
+}
