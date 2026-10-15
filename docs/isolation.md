@@ -159,3 +159,122 @@ Containers share kernel/daemon trust and are not an absolute security boundary;
 malicious images, daemon compromise, kernel escapes and resource enforcement
 failures remain risks. Do not admit arbitrary code/config/plugins or elevate
 static audit evidence based on this scaffold.
+
+## Owned smoke source: partial observations only (T8C)
+
+`internal/ownedprobe/cmd/owned-smoke` is a standalone internal command, not a
+public CLI mode or host fallback. Source and a scratch-image **recipe** are
+provided; no image is provisioned, registered or approved. Do not run the valid
+probe on the host. Unit tests inject all kernel and filesystem operations,
+including adapter descriptor operations; they do not access real procfs, root
+markers, credentials or network. Existing audit/report CLI code shares no new
+code, so a differential CLI campaign does not apply to this unit.
+
+### Fixed first profile and interface
+
+| Setting | Required future runtime configuration |
+| --- | --- |
+| Entry point | `/ci-trust/owned-smoke` |
+| Arguments | `--fixture=smoke-v1 --config=owned-v1` (either order) |
+| UID | 65534, including all four kernel UID fields |
+| CPU / memory / swap / pids | 1 CPU (`100000 100000`), 128 MiB, zero, 32 |
+| Scratch | `/tmp` tmpfs, 8 MiB, rw/nosuid/nodev/noexec |
+| Wall / combined output | 10 seconds upper bound / 64 KiB, enforced by harness |
+| Client ceiling | Existing backend two-second ceiling remains unchanged |
+
+This is one source profile, not a default image, production catalog or approved
+plan. The probe requires cgroup v2 rooted at `0::/` and reads only fixed bounded
+control files. Other layouts, representations or unavailable controls fail
+closed rather than discovering arbitrary cgroup paths. CPU, memory, swap and
+pids values are **configuration observations**, not stress/enforcement proof.
+The wall upper bound does not override the shorter backend client ceiling.
+
+`--help` alone prints two lines and exits 0 without provider calls:
+
+```text
+Usage: owned-smoke --fixture=smoke-v1 --config=owned-v1
+Owned-fixture-only partial observations; not isolation proof.
+```
+
+Unknown, missing, duplicate, positional or split-value arguments exit 2 with
+empty stdout and `owned-smoke: invalid arguments` on stderr. A guard, observation,
+write or cleanup failure exits 1 with empty stdout and `owned-smoke: unavailable`
+on stderr; system error text and file contents are not echoed. Successful owned
+observations exit 0 with empty stderr and exactly:
+
+```text
+owned-smoke: partial owned-fixture-only
+observed: uid65534 caps0 no-new-privileges seccomp-filter root-marker-erofs scratch-write-cleanup cgroup-v2-profile
+not-proven: resource-enforcement network credentials wall-time output-limit full-isolation
+```
+
+Each line ends with LF. This is not report-v1 data, a validator verdict or
+`isolation_proof=true`. Network and credential observations are deliberately
+absent: there is no network, environment or credential API. No CPU/pid/OOM stress
+modes exist. Wall/output enforcement, cancellation and runtime cleanup still
+require separately approved real-runtime evidence.
+
+### Owned file effects and limits
+
+Before writes the real adapter rechecks Linux, UID 65534, all five capability
+sets zero, NoNewPrivs=1 and seccomp filter mode 2. Reads have fixed path/bound
+allowlists; final-component symlinks and nonregular files are refused, using
+nonblocking opens to avoid FIFO hangs. The image's parent directories and kernel
+mounts remain trusted prerequisites, not an escape-proof custom sandbox.
+
+The literal marker at `/ci-trust/root-marker` must match
+`tools/owned-smoke/root-marker` byte-for-byte before any write. It is owned by
+65534 and mode 0600 so discretionary permissions do not masquerade as a read-only
+root. Only EROFS from the write-open establishes the narrow read-only-marker
+observation; EACCES does not. Unexpected writable access is always failure. The
+adapter restores its known marker on the same descriptor even after partial
+write/truncate failure; restoration failure remains unavailable, never success.
+Run also requests restoration on unexpected writable success.
+
+Scratch is a single 23-byte exclusive-created file,
+`/tmp/ci-trust-owned-smoke-v1`, mode 0600. Ownership starts at successful exclusive
+open, including subsequent short-write or close failure. Cleanup checks recorded
+file identity and refuses foreign collisions/replacements. Failure to establish
+identity or complete cleanup remains unavailable and can leave owned scratch;
+the harness must still clean up its container. Identity-check/unlink races are
+not an absolute guarantee against concurrent hostile processes; this owned
+single-process image is not an arbitrary-code sandbox.
+
+### Compile and prepare source context only
+
+Prerequisites: an already-installed compatible Go toolchain and locally cached
+module dependencies; never acquire tools, packages or images implicitly. The
+parent owns checks. A compile-only Linux/amd64 artifact uses package
+`./internal/ownedprobe/cmd/owned-smoke`, `GOOS=linux GOARCH=amd64 CGO_ENABLED=0` and
+`go build -o <authorized-scratch>/owned-smoke`. Keep GOTOOLCHAIN=local,
+GOPROXY=off, GOSUMDB=off and GOTELEMETRY=off, with GOCACHE and TEMP/TMP/TMPDIR in
+the explicitly authorized project-common-Git scratch area. Do not execute the
+result. Cross-compilation is not Linux execution evidence.
+
+For future review, prepare a dedicated context containing only the compiled
+`owned-smoke`, the literal `root-marker` and the reviewed
+`tools/owned-smoke/Dockerfile`. Do not copy the repository, credentials or caches
+into that context. The recipe has only FROM scratch and two explicit owned-file
+COPY instructions. It has no frontend directive, remote base, RUN, ADD, ENV,
+USER, CMD, ENTRYPOINT, HEALTHCHECK or VOLUME instructions. Numeric runtime user
+and explicit entrypoint come from a later approved plan, not image defaults.
+
+**The recipe alone is not admissible as-is.** Ordinary Dockerfile/BuildKit
+conversion can supply a default PATH in image `Config.Env`, even with FROM
+scratch and no ENV instruction. Absence of Dockerfile instructions does not
+prove empty image configuration. This is a static recipe limitation, not an
+observation of actual image metadata; no image was built or inspected here.
+
+Before catalog or preflight admission, a future explicitly approved preparation
+must include reviewed empty-config finalization and independent observation and
+attestation of every required image configuration field, including `Env`, `Cmd`,
+`Entrypoint`, `Healthcheck` and `Volumes`. All must satisfy the existing backend's
+empty-default requirements. Its nonempty-Env refusal remains unchanged; do not
+work around it by admitting the injected PATH. No config rewriter, image builder
+or finalization procedure is implemented or authorized by this source recipe.
+
+No image-building automation or Docker commands are supplied here. Image
+creation/provisioning, immutable-content review/catalog admission, exact runtime
+plan binding and execution require future explicit human review and approval.
+Full S8/#8 and #9 acceptance remain OPEN; mocks and this recipe do not fill that
+proof gap.
