@@ -1,7 +1,8 @@
 # MVP architecture: evidence before guarantees
 
 Go is accepted. Build a small library with explicit data flow and a thin CLI,
-not an agent platform. All components below are planned, not implemented.
+not an agent platform. The evidence schema/validator is the first implementation
+unit (#2); other components below remain planned, not implemented.
 
 ## Component boundaries
 
@@ -40,9 +41,10 @@ Configuration, execution, outcome, efficacy and enforcement are independent:
 
 [Issue #2](https://github.com/dnlrsls/ci-trust/issues/2) owns schema v1, including
 snapshot/SHA when available, environment, tool/config/check identity, provenance,
-states, causes, redaction and compatibility. Preserve CONFIGURED, EXECUTED,
-SKIPPED, UNKNOWN and UNVERIFIABLE concepts; finalize explicit known non-execution
-and valid state/outcome combinations there. This design does not freeze field names.
+states, causes, redaction and compatibility. Its [schema contract](evidence-contract.md)
+and [evidence rules](evidence-semantics.md) define explicit NOT_EXECUTED alongside
+CONFIGURED, EXECUTED, SKIPPED, UNKNOWN and UNVERIFIABLE, and keep outcomes separate.
+This architecture document does not define a competing JSON field layout.
 
 Equivalent snapshots/options must produce stable identifiers, ordering and JSON.
 Separate volatile metadata. Keep evidence paths relative, redact secrets, expose
@@ -92,11 +94,11 @@ A future read-only GitHub evidence collector could compare workflows with actual
 runs/checks/protection policy. It is not required for the offline MVP; no remote
 execution or enforcement facts are inferred in its absence.
 
-Before implementation, #2 must stabilize the shared schema; #3/#4 must document
-parser and scan bounds. #8 owns the threat model, consent binding and approved
-runtime/host combinations before any verification execution. Go toolchain and
-dependency versions are not selected yet. The maintainer's license choice blocks
-licensed distribution.
+Before implementing consumers, use #2's versioned shared schema and semantic
+validation; #3/#4 must document parser and scan bounds. #8 owns the threat model,
+consent binding and approved runtime/host combinations before any verification execution. The contract library
+uses Go 1.26 and a pinned pure-Go JSON Schema dependency; YAML/CLI dependencies
+remain undecided. The maintainer's license choice blocks licensed distribution.
 
 ## Design review for issue #1
 
