@@ -9,8 +9,8 @@ import (
 )
 
 // ReadSnapshot reads only known static markers, never evaluating their contents.
-// Zero limits use defaults. Hard caps are depth/script depth 64, entries/reference
-// edges 100000, individual bytes 16 MiB and aggregate bytes 64 MiB. Directory
+// Zero limits use defaults. Shared hard caps are depth/script depth 64,
+// entries 65536, reference edges 4096, individual bytes 16 MiB and aggregate 64 MiB. Directory
 // enumeration is incremental; an overflowing directory is omitted in full rather
 // than selecting an unstable filesystem-order subset. Counts include every entry.
 // Read attempts, including rejected files, consume the aggregate byte budget;
@@ -23,31 +23,11 @@ func ReadSnapshot(rootPath string, options Options) Snapshot {
 	add := func(code, p, message string) {
 		s.Diagnostics = append(s.Diagnostics, Diagnostic{Code: code, Path: p, Message: message, State: "UNKNOWN"})
 	}
-	defaults := DefaultOptions()
-	ints := []struct {
-		value         *int
-		fallback, cap int
-	}{{&options.MaxDepth, defaults.MaxDepth, 64}, {&options.MaxEntries, defaults.MaxEntries, 100000}, {&options.MaxReferences, defaults.MaxReferences, 100000}, {&options.MaxScriptDepth, defaults.MaxScriptDepth, 64}}
-	for _, v := range ints {
-		if *v.value < 0 || *v.value > v.cap {
-			add("INVALID_OPTIONS", ".", "Options exceed supported bounds.")
-			return s
-		}
-		if *v.value == 0 {
-			*v.value = v.fallback
-		}
-	}
-	for _, v := range []struct {
-		value         *int64
-		fallback, cap int64
-	}{{&options.MaxFileBytes, defaults.MaxFileBytes, 16 << 20}, {&options.MaxTotalBytes, defaults.MaxTotalBytes, 64 << 20}} {
-		if *v.value < 0 || *v.value > v.cap {
-			add("INVALID_OPTIONS", ".", "Options exceed supported bounds.")
-			return s
-		}
-		if *v.value == 0 {
-			*v.value = v.fallback
-		}
+	var valid bool
+	options, valid = normalizeOptions(options)
+	if !valid {
+		add("INVALID_OPTIONS", ".", "Options exceed supported bounds.")
+		return s
 	}
 	if runtime.GOOS == "js" || runtime.GOOS == "plan9" {
 		add("UNSUPPORTED_HOST", ".", "Host cannot provide required confinement.")
