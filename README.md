@@ -1,45 +1,73 @@
 # CI Trust
 
-**Build, verify and understand your CI.**
+**Understand configured CI without executing it.**
 
-A green CI does not necessarily mean a trustworthy CI. CI Trust will explain
-which validations are configured, what execution is observed, what was actually
-verified, and which guarantees remain unknown.
+CI Trust implements an offline, read-only `audit` and a saved-report renderer.
+It inventories bounded Go/npm declarations, analyzes GitHub Actions configuration
+and explains evidence-backed configured gaps. Configuration is not observed
+execution, validator efficacy or required-check enforcement; those remain UNKNOWN
+without separate evidence. There is no aggregate green trust score.
 
-**Status: early MVP.** Go is accepted. The evidence contract and bounded Go/npm
-static discovery are Go library units; the audit/analyzer CLI is not implemented. There is no executable,
-installation command, implemented adapter or verified cross-host support yet.
+## Build and use
 
-## Read the design
+Requires Go 1.26; dependencies are pinned in go.mod/go.sum. An initial dependency
+download may need network; the audit/report commands do not.
 
-1. [Architecture and support boundaries](docs/architecture.md)
-2. [Why Go](docs/decisions/0001-use-go.md)
-3. [Proposed CLI contract](docs/cli.md)
-4. [Evidence schema and fixtures](docs/evidence-contract.md)
-5. [Evidence rules, canonicalization and redaction](docs/evidence-semantics.md)
-6. [Safe static discovery and bounds](docs/discovery.md)
-7. [Contribution guidance](CONTRIBUTING.md)
+```sh
+go build -o ci-trust ./cmd/ci-trust
+./ci-trust --help
+./ci-trust --version
+./ci-trust audit PATH --format json > audit.json
+./ci-trust report --input audit.json --format human
+```
 
-The Core will operate without agents, LLMs or Gentle Shell. Agents may consume
-the same versioned JSON reports as developers; they are not required to produce
-or interpret evidence.
+On Windows build `ci-trust.exe` and invoke `./ci-trust.exe`. The development version
+is `dev`; build-time `-ldflags "-X main.version=VALUE"` sets it explicitly.
+No installation or licensed release/distribution is claimed.
 
-## MVP sequence
+- `audit PATH` requires an explicit target and defaults to human output.
+  `--platform linux`, `--platform windows`, and `--platform macos` may each be
+  supplied once to override the optional root `.ci-trust.json` declaration.
+- `report` defaults to stdin and human output; `--input FILE|-` selects saved data.
+  It validates and renders without rescanning or needing the source repository.
+- Both accept `--format human|json`. JSON stdout is one canonical schema-v1
+  document; diagnostics also appear on stderr. Human output retains scoped records
+  and limitations, not a simplified success badge.
+- Exit **0** means valid report (including findings/FAIL/UNKNOWN), help or version;
+  **1** means operational failure; **2** means invalid invocation. Report input is
+  bounded to 8 MiB; interactive stdin is refused.
 
-- **P0:** architecture, evidence contract, static discovery, GitHub Actions
-  analysis, bounded gap evaluation, audit/report CLI and independent E2E fixtures
-  ([#1–#7](https://github.com/dnlrsls/ci-trust/issues)).
-- **P1:** explicit consent and isolation, then controlled lint sensitivity
-  ([#8](https://github.com/dnlrsls/ci-trust/issues/8),
-  [#9](https://github.com/dnlrsls/ci-trust/issues/9)).
-- **P2:** evidence-backed recommendations and reviewable dry-run diffs
-  ([#10](https://github.com/dnlrsls/ci-trust/issues/10)).
+**Status: implemented local audit/report slice, not a complete MVP.** The
+[observed demo](docs/audit-demo.md) records Windows/amd64 results, input immutability,
+JSON/report parity and a bounded source self-audit. Linux/macOS and remote CI proof
+are not yet observed. Declared platform targets and cross-builds do not prove
+execution on those hosts. Independent corpus acceptance remains separate work.
 
-The existing issue tagline, “Trust your CI. Verify everything.”, is an aspiration,
-not a certification or an exhaustive-coverage claim.
+## Read next
+
+1. [Reproduce the audit/report demo and understand its limits](docs/audit-demo.md)
+2. [Exact CLI options, rendering and errors](docs/cli.md)
+3. [Architecture and support boundaries](docs/architecture.md)
+4. [Evidence schema](docs/evidence-contract.md) and [semantics](docs/evidence-semantics.md)
+5. [Static discovery bounds](docs/discovery.md) and [independent fixtures](docs/audit-fixtures.md)
+6. [Contribution guidance](CONTRIBUTING.md) and [Go decision](docs/decisions/0001-use-go.md)
+
+## Future work and safety
+
+`verify` and `bootstrap` are not implemented commands. Controlled verification
+requires explicit target-bound consent and bounded isolation; no production Docker
+backend or trusted image/catalog is available. There is no host-shell fallback.
+Future bootstrap is evidence-backed dry-run recommendations only, never apply.
+The later opt-in, revision-pinned Gentleman-Programming/engram study must use generic
+adapters without upstream writes; no study or network access is claimed here.
+
+Core works without agents, LLMs or Gentle Shell. Audit/report do not execute target
+scripts, hooks, actions or package managers, use credentials, fetch remote policy,
+write hidden reports or fix files. User-directed stdout redirection is explicit.
+The issue tagline “Trust your CI. Verify everything.” remains an aspiration.
 
 ## License status
 
 No license has been selected or granted by these documents. Public visibility
-does not itself grant an open-source license. A maintainer must explicitly select
-one before licensed distribution; this repository is intended to become open source.
+is not an open-source license. Licensed release/distribution waits for an explicit
+maintainer license choice.
