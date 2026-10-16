@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -82,20 +81,15 @@ func (c *executableDocker) load(ctx context.Context, archive []byte) (string, er
 func (c *executableDocker) invoke(ctx context.Context, output io.Writer, input io.Reader, limit time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	argv := append([]string{"--config", c.config, "--host", "unix:///var/run/docker.sock"}, args...)
-	cmd := exec.CommandContext(ctx, c.path, argv...)
-	cmd.Env = []string{"HOME=" + c.config, "DOCKER_CONFIG=" + c.config, "LANG=C", "LC_ALL=C"}
-	cmd.WaitDelay = 200 * time.Millisecond
-	cmd.Stdin = input
 	b := &boundedOutput{max: 64 << 10, cancel: cancel}
-	if output == nil {
-		cmd.Stdout = b
-		cmd.Stderr = b
-	} else {
-		cmd.Stdout = output
-		cmd.Stderr = output
+	if output != nil {
+		err := c.runProcess(ctx, input, output, output, args...)
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", err
 	}
-	err := cmd.Run()
+	err := c.runProcess(ctx, input, b, b, args...)
 	s, overflow := b.state()
 	if overflow {
 		return s, errors.New("metadata output limit")
@@ -136,6 +130,11 @@ func (d *LocalDocker) Preflight(ctx context.Context, p Plan) error {
 	}
 	if d.host != "linux" || d.client == nil || !valid(p) {
 		return errors.New("unsupported local Linux scope or plan")
+	}
+	if p.Transport == splitStdin {
+		if _, ok := d.client.(splitDockerClient); !ok {
+			return errors.New("split container transport unavailable")
+		}
 	}
 	if err := d.checkDaemon(ctx); err != nil {
 		return err
@@ -192,8 +191,11 @@ var containerName = regexp.MustCompile(`^ci-trust-[0-9]+-[0-9]+$`)
 type dockerInspection struct {
 	ID     string `json:"Id"`
 	Image  string
-	Config struct{ Labels map[string]string }
-	State  struct {
+	Config struct {
+		Labels         map[string]string
+		Tty, OpenStdin *bool
+	}
+	State struct {
 		Status, StartedAt string
 		Error             *string
 		ExitCode          *int
@@ -213,12 +215,35 @@ func (d *LocalDocker) inspect(ctx context.Context, id string) (dockerInspection,
 	return rows[0], nil
 }
 func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w io.Writer) (int, error) {
+	return d.start(ctx, name, args, w, "", nil)
+}
+
+func (d *LocalDocker) startCaptured(ctx context.Context, name string, args []string, input string) (capturedRun, error) {
+	c := capturedRun{ExitCode: -1}
+	code, err := d.start(ctx, name, args, nil, input, &c)
+	c.ExitCode = code
+	return c, err
+}
+
+// start shares the ownership, inspection and cleanup authority path with legacy
+// smoke. Captured mode is explicitly plan-bound, not selected by arbitrary input.
+func (d *LocalDocker) start(ctx context.Context, name string, args []string, w io.Writer, input string, capture *capturedRun) (int, error) {
 	if err := d.admit(ctx); err != nil {
 		return -1, err
 	}
 	defer d.mu.Unlock()
 	if !d.ready || d.attempted || !containerName.MatchString(name) || !reflect.DeepEqual(args, dockerArgs(d.plan, name)) {
 		return -1, errors.New("unowned start vector")
+	}
+	var split splitDockerClient
+	if capture != nil {
+		var ok bool
+		split, ok = d.client.(splitDockerClient)
+		if !ok || d.plan.Transport != splitStdin || input != "" || !valid(d.plan) {
+			return -1, errors.New("unowned or unavailable split transport")
+		}
+	} else if d.plan.Transport != "" || w == nil {
+		return -1, errors.New("legacy transport required")
 	}
 	// Direct callers receive the same owned wall bound as Runner.Execute;
 	// WithTimeout also preserves an earlier caller cancellation deadline.
@@ -240,16 +265,25 @@ func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w i
 	if !containerID.MatchString(id) {
 		return -1, errors.New("creation ID unavailable")
 	}
-	if _, err = d.inspect(ctx, id); err != nil {
+	created, err := d.inspect(ctx, id)
+	if err != nil {
 		return -1, err
 	}
 	d.id = id // Removal authority exists only after exact ID, image and secret label match.
+	if capture != nil && (created.Config.Tty == nil || *created.Config.Tty || created.Config.OpenStdin == nil || !*created.Config.OpenStdin) {
+		return -1, errors.New("split container input or terminal state unverified")
+	}
 	var proofOutput *boundedOutput
 	if d.plan.Config == "owned-proof-v1" {
 		proofOutput = &boundedOutput{max: d.plan.Limits.OutputBytes, cancel: cancel}
 		w = io.MultiWriter(w, proofOutput)
 	}
-	_, attachErr := d.client.call(ctx, w, "start", "--attach", id)
+	var attachErr error
+	if capture != nil {
+		capture.Stdout, capture.Stderr, attachErr = split.attach(ctx, id, input, d.plan.Limits.OutputBytes, d.plan.Limits.Wall)
+	} else {
+		_, attachErr = d.client.call(ctx, w, "start", "--attach", id)
+	}
 	if ctx.Err() != nil {
 		return -1, ctx.Err()
 	}

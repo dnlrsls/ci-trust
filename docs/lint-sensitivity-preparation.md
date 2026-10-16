@@ -1,10 +1,19 @@
 # Offline lint sensitivity preparation (#9)
 
-**Status: pure classifier, owned fixture data, inert ESLint invocation descriptor
-and bounded JSON normalizer only. No process executor, pinned runtime image,
+**Status: pure classifier, owned fixture data, inert ESLint invocation descriptor,
+bounded JSON normalizer and internal launcher-receipt framing candidate only.
+No process executor, pinned runtime image,
 public `verify` command, or real sensitivity evidence is shipped by this unit.
 #9 acceptance remains open. The separately recorded [bounded #8 acceptance](https://github.com/dnlrsls/ci-trust/issues/8#issuecomment-6206909812)
 does not authorize ESLint execution.**
+
+The [runtime preparation and integration plan](lint-runtime-plan.md) records
+candidate upstream versions, unresolved immutable pins, the Node security review
+gate and the runner transport/image changes required before admission. It does
+not select an executable catalog entry or authorize preparation/execution.
+The separate [owned launcher candidate](lint-launcher-receipt.md) implements fixed
+process capture and receipt emission, tested with owned helpers only. It is not
+connected to this package's classifier through an admitted runtime or public CLI.
 
 `internal/lintsensitivity` has no filesystem reads, subprocesses, network,
 configuration loading, consent creation, or runner connection. Its JavaScript is

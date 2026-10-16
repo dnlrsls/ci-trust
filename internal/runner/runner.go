@@ -29,6 +29,8 @@ type Plan struct {
 	Snapshot, Adapter, Tool, Image, Fixture, Config string
 	Limits                                          Limits
 	Effects                                         string
+	// Empty retains the original smoke vector and canonical JSON/digest.
+	Transport string `json:",omitempty"`
 }
 
 // Consent transports a trusted human UI decision; it does not authenticate human presence.
@@ -55,6 +57,8 @@ type Result struct {
 	Reason          string
 	ExitCode        int
 	Output          string
+	Stdout          string `json:",omitempty"`
+	Stderr          string `json:",omitempty"`
 	CleanupVerified bool
 	// OOMEvent is the final inspected cgroup flag, not PID 1's cause of death.
 	// Nil is unavailable; true remains explicit even for expected child OOM.
@@ -70,6 +74,8 @@ type Snapshot func(context.Context) (string, error)
 // is not independent enforcement proof. Start must honor cancellation and send
 // both streams to output. Remove must bind ownership and an exact container ID
 // before removal, then verify absence; ambiguous creation must fail closed.
+// The opt-in split transport additionally requires the private captured runtime
+// capability; legacy Start cannot substitute for it or receive owned input.
 type Runtime interface {
 	Preflight(context.Context, Plan) error
 	Start(context.Context, string, []string, io.Writer) (int, error)
@@ -87,6 +93,9 @@ var imageID = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 func valid(p Plan) bool {
 	l := p.Limits
+	if p.Transport != "" && (p.Transport != splitStdin || p.Config != "owned-v1" || l.OutputBytes > transportLimit) {
+		return false
+	}
 	return regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(p.Snapshot) && p.Adapter == "owned-smoke-v1" && p.Tool == "owned-smoke-v1" && imageID.MatchString(p.Image) && p.Fixture == "smoke-v1" && (p.Config == "owned-v1" || p.Config == "owned-proof-v1") && p.Effects == "owned fixture only; no host mounts; no network" && l.Wall > 0 && l.Wall <= time.Minute && l.MemoryBytes >= 16<<20 && l.MemoryBytes <= 1<<30 && l.CPUs >= 1 && l.CPUs <= 2 && l.PIDs >= 1 && l.PIDs <= 64 && l.OutputBytes >= 1 && l.OutputBytes <= 1<<20 && l.ScratchBytes >= 1 && l.ScratchBytes <= 64<<20
 }
 
@@ -132,6 +141,15 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 		result.Reason = err.Error()
 		return result
 	}
+	var split capturedRuntime
+	if p.Transport == splitStdin {
+		var ok bool
+		split, ok = r.runtime.(capturedRuntime)
+		if !ok {
+			result.Reason = "split container transport unavailable"
+			return result
+		}
+	}
 	if err := r.runtime.Preflight(ctx, p); err != nil {
 		result.Reason = "preflight: " + err.Error()
 		return result
@@ -150,7 +168,20 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	defer cancel()
 	name := uniqueName()
 	out := &boundedOutput{max: p.Limits.OutputBytes, cancel: cancel}
-	code, runErr := r.runtime.Start(runCtx, name, dockerArgs(p, name), out)
+	var code int
+	var runErr error
+	var captured *splitOutput
+	if split != nil {
+		// The sole admitted smoke fixture has no stdin bytes. A future lint
+		// catalog must bind role-specific owned input before it is admitted.
+		c, err := split.startCaptured(runCtx, name, dockerArgs(p, name), "")
+		code, runErr = c.ExitCode, err
+		captured = &splitOutput{max: p.Limits.OutputBytes, cancel: cancel}
+		_, _ = io.WriteString(streamOutput{captured, false}, c.Stdout)
+		_, _ = io.WriteString(streamOutput{captured, true}, c.Stderr)
+	} else {
+		code, runErr = r.runtime.Start(runCtx, name, dockerArgs(p, name), out)
+	}
 	if source, ok := r.runtime.(interface{ OOMEvent() *bool }); ok {
 		result.OOMEvent = source.OOMEvent()
 	}
@@ -159,6 +190,9 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	stop()
 	output, overflow := out.state()
 	result.Output = output
+	if captured != nil {
+		result.Stdout, result.Stderr, overflow = captured.state()
+	}
 	result.ExitCode = code
 	result.CleanupVerified = cleanupErr == nil
 	switch {
@@ -190,7 +224,11 @@ func uniqueName() string {
 }
 func dockerArgs(p Plan, name string) []string {
 	l := p.Limits
-	return []string{"run", "--name", name, "--pull=never", "--network=none", "--read-only", "--user=65534:65534", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--memory", fmt.Sprint(l.MemoryBytes), "--memory-swap", fmt.Sprint(l.MemoryBytes), "--cpus", fmt.Sprint(l.CPUs), "--pids-limit", fmt.Sprint(l.PIDs), "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,nodev,size=%d", l.ScratchBytes), "--entrypoint", "/ci-trust/owned-smoke", p.Image, "--fixture=smoke-v1", "--config=" + p.Config}
+	args := []string{"run", "--name", name, "--pull=never", "--network=none", "--read-only", "--user=65534:65534", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--memory", fmt.Sprint(l.MemoryBytes), "--memory-swap", fmt.Sprint(l.MemoryBytes), "--cpus", fmt.Sprint(l.CPUs), "--pids-limit", fmt.Sprint(l.PIDs), "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,nodev,size=%d", l.ScratchBytes), "--entrypoint", "/ci-trust/owned-smoke", p.Image, "--fixture=smoke-v1", "--config=" + p.Config}
+	if p.Transport == splitStdin {
+		args = append([]string{"run", "--interactive"}, args[1:]...)
+	}
+	return args
 }
 
 type boundedOutput struct {
