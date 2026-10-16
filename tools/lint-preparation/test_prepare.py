@@ -17,6 +17,62 @@ spec.loader.exec_module(prep)
 
 
 class PreparationTests(unittest.TestCase):
+    def test_stage_failures_are_bounded_and_do_not_expose_error_text(self):
+        secret = "https://user:secret@private.test/path\n::error::injected /private/file"
+        for stage in sorted(prep.STAGES):
+            def fail():
+                with prep.diagnostic_stage(stage):
+                    raise ValueError(secret)
+            output = io.StringIO()
+            with self.subTest(stage=stage), mock.patch.object(prep, "prepare", side_effect=fail), mock.patch.object(prep.os.sys, "stderr", output):
+                self.assertEqual(prep.main(), 1)
+            self.assertEqual(output.getvalue(), "owned lint preparation failed; stage=" + stage + "; category=validation; no runtime admission or ESLint execution\n")
+
+    def test_error_categories_never_require_exception_text(self):
+        class UnprintableError(Exception):
+            def __str__(self):
+                raise AssertionError("must not stringify errors")
+        cases = [
+            (prep.urllib.error.HTTPError("private", 403, "secret", {}, None), "http"),
+            (prep.urllib.error.URLError("secret"), "network"),
+            (TimeoutError("secret"), "timeout"),
+            (prep.subprocess.TimeoutExpired(["secret"], 180, output=b"secret"), "timeout"),
+            (FileNotFoundError("secret"), "filesystem"),
+            (tarfile.ReadError("secret"), "archive"),
+            (KeyError("secret"), "validation"),
+            (UnprintableError(), "unexpected"),
+        ]
+        for error, category in cases:
+            with self.subTest(category=category):
+                self.assertEqual(prep.error_category(error), category)
+                with self.assertRaises(prep.PreparationFailure) as caught:
+                    with prep.diagnostic_stage("base-image"):
+                        raise error
+                self.assertEqual(str(caught.exception), "base-image:" + category)
+
+    def test_nested_stage_preserves_innermost_failure(self):
+        with self.assertRaises(prep.PreparationFailure) as caught:
+            with prep.diagnostic_stage("npm-setup"):
+                with prep.diagnostic_stage("npm-ci"):
+                    raise ValueError("secret")
+        self.assertEqual(str(caught.exception), "npm-ci:validation")
+
+    def test_main_revalidates_structured_errors_and_handles_unknown_failures(self):
+        invalid = prep.PreparationFailure("npm-ci", "process-failed")
+        invalid.stage = "secret\n::error::injected"
+        invalid.category = "private"
+        for error, category in ((invalid, "unexpected"), (OSError("private"), "filesystem")):
+            output = io.StringIO()
+            with mock.patch.object(prep, "prepare", side_effect=error), mock.patch.object(prep.os.sys, "stderr", output):
+                self.assertEqual(prep.main(), 1)
+            self.assertEqual(output.getvalue(), "owned lint preparation failed; stage=unknown; category=" + category + "; no runtime admission or ESLint execution\n")
+        with mock.patch.object(prep, "prepare"), mock.patch.object(prep.os.sys, "stderr", io.StringIO()) as output:
+            self.assertEqual(prep.main(), 0)
+            self.assertEqual(output.getvalue(), "")
+        with self.assertRaises(prep.PreparationFailure):
+            with prep.diagnostic_stage("untrusted-stage"):
+                self.fail("invalid stage must not execute")
+
     def test_reproducible_archive_and_independent_decode(self):
         tree = {"work": ("dir", 0o555, b""), "owned/config": ("file", 0o444, b"owned\n")}
         original = dict(tree)
@@ -128,6 +184,27 @@ class PreparationTests(unittest.TestCase):
                         self.assertNotIn(forbidden, env)
                     self.assertEqual(invocation.kwargs["timeout"], 180)
             server.shutdown.assert_called_once()
+            # Mock both npm phases: no Node process, socket or network is used.
+            cases = [
+                ([SimpleNamespace(returncode=1)], False, "npm-lock", "process-failed"),
+                ([SimpleNamespace(returncode=0), SimpleNamespace(returncode=1)], False, "npm-ci", "process-failed"),
+                ([prep.subprocess.TimeoutExpired(["private"], 180)], False, "npm-lock", "timeout"),
+                ([SimpleNamespace(returncode=0)], True, "npm-lock", "origin-denied"),
+            ]
+            for outcomes, denied, stage, category in cases:
+                server.reset_mock()
+                def execute(*args, **kwargs):
+                    server.denied = denied
+                    outcome = outcomes.pop(0)
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    return outcome
+                with self.subTest(stage=stage, category=category), mock.patch.object(prep.http.server, "ThreadingHTTPServer", return_value=server), mock.patch.object(prep.subprocess, "run", side_effect=execute):
+                    with self.assertRaises(prep.PreparationFailure) as caught:
+                        prep.npm_install(node_root, target, home)
+                    self.assertEqual(str(caught.exception), stage + ":" + category)
+                server.shutdown.assert_called_once()
+                server.server_close.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -57,6 +57,22 @@ No Docker daemon is accessed; no image is loaded, pushed or registered; neither
 ESLint nor the launcher runs. GitHub Actions infrastructure actions use their own
 reviewed runtimes but do not receive authority to execute the prepared tool.
 
+## Failure diagnostics
+
+Preparation failures exit nonzero with a single owned diagnostic, for example
+`stage=npm-ci; category=process-failed`. Stages distinguish host inputs, Node
+download/extraction, the owned manifest, npm setup/lock/install, base import,
+rootfs assembly, image validation and artifact writing. Nested npm failures retain
+their phase rather than being relabeled as setup failures.
+
+Stage and category values come from fixed allowlists, never exception messages,
+URLs, filesystem paths, subprocess arguments or package output. Categories identify
+HTTP, network, timeout, filesystem, archive, validation, failed npm exit or denied
+proxy origin; unclassified failures remain `unexpected`. A category is not proof
+of the underlying cause. npm stdout/stderr remain discarded; top-level failures
+do not print raw tracebacks, and logs are not uploaded as artifacts. Diagnostics
+do not relax any preparation or admission gate.
+
 ## What the artifacts do NOT prove
 
 Node remains on the previously documented security hold. Package lock generation
