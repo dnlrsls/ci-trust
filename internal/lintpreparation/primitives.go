@@ -141,15 +141,65 @@ func Digest(data []byte) string {
 	return "sha256:" + hex.EncodeToString(h[:])
 }
 
+// MaxJSONDepth bounds container nesting (root container 1, scalar 0). This
+// technical budget reflects Python's implicit recursion bound, not its exact limit.
+const MaxJSONDepth = 1000
+
+// validJSONUnicode rejects unsupported malformed UTF-16 before encoding/json
+// can replace it with U+FFFD. Escaped backslashes are not Unicode escapes.
+func validJSONUnicode(data []byte) bool {
+	inString := false
+	for i := 0; i < len(data); i++ {
+		if data[i] == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString || data[i] != '\\' {
+			continue
+		}
+		i++
+		if i >= len(data) {
+			return false
+		}
+		if data[i] != 'u' {
+			continue
+		}
+		if i+4 >= len(data) {
+			return false
+		}
+		r, err := strconv.ParseUint(string(data[i+1:i+5]), 16, 16)
+		if err != nil {
+			return false
+		}
+		i += 4
+		if r >= 0xdc00 && r <= 0xdfff {
+			return false
+		}
+		if r < 0xd800 || r > 0xdbff {
+			continue
+		}
+		if i+6 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' {
+			return false
+		}
+		low, err := strconv.ParseUint(string(data[i+3:i+7]), 16, 16)
+		if err != nil || low < 0xdc00 || low > 0xdfff {
+			return false
+		}
+		i += 6
+	}
+	return true
+}
+
 // UniqueJSON preserves arbitrary-precision number spelling and checks every
-// object, including nested objects. It rejects any second value or trailing junk.
+// object, including nested objects. It rejects any second value or trailing junk,
+// unpaired surrogate escapes, invalid UTF-8 and nesting above MaxJSONDepth.
 func UniqueJSON(data []byte) (any, error) {
-	if !utf8.Valid(data) {
+	if !utf8.Valid(data) || !validJSONUnicode(data) {
 		return nil, NewValidationFailure("")
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.UseNumber()
-	v, err := jsonValue(d)
+	v, err := jsonValue(d, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +208,7 @@ func UniqueJSON(data []byte) (any, error) {
 	}
 	return v, nil
 }
-func jsonValue(d *json.Decoder) (any, error) {
+func jsonValue(d *json.Decoder, depth int) (any, error) {
 	t, err := d.Token()
 	if err != nil {
 		return nil, NewValidationFailure("")
@@ -166,6 +216,10 @@ func jsonValue(d *json.Decoder) (any, error) {
 	delim, ok := t.(json.Delim)
 	if !ok {
 		return t, nil
+	}
+	depth++
+	if depth > MaxJSONDepth {
+		return nil, NewValidationFailure("")
 	}
 	switch delim {
 	case '{':
@@ -182,7 +236,7 @@ func jsonValue(d *json.Decoder) (any, error) {
 			if _, ok = m[key]; ok {
 				return nil, NewValidationFailure("json-duplicate-key")
 			}
-			v, e := jsonValue(d)
+			v, e := jsonValue(d, depth)
 			if e != nil {
 				return nil, e
 			}
@@ -196,7 +250,7 @@ func jsonValue(d *json.Decoder) (any, error) {
 	case '[':
 		a := []any{}
 		for d.More() {
-			v, e := jsonValue(d)
+			v, e := jsonValue(d, depth)
 			if e != nil {
 				return nil, e
 			}
@@ -214,10 +268,18 @@ func jsonValue(d *json.Decoder) (any, error) {
 // Canonical supports contract JSON: string-keyed objects, arrays, strings,
 // booleans, null and integers. Floats/exponent numbers are deliberately rejected:
 // Go and Python float formatting are not interchangeable. Integers are unbounded.
+// Container nesting is limited to MaxJSONDepth, including direct caller values.
 func Canonical(value any) ([]byte, error) {
 	var b bytes.Buffer
-	var emit func(any) error
-	emit = func(v any) error {
+	var emit func(any, int) error
+	emit = func(v any, depth int) error {
+		switch v.(type) {
+		case []any, map[string]any:
+			depth++
+			if depth > MaxJSONDepth {
+				return NewValidationFailure("")
+			}
+		}
 		switch x := v.(type) {
 		case nil:
 			b.WriteString("null")
@@ -274,7 +336,7 @@ func Canonical(value any) ([]byte, error) {
 				if i > 0 {
 					b.WriteByte(',')
 				}
-				if e := emit(v); e != nil {
+				if e := emit(v, depth); e != nil {
 					return e
 				}
 			}
@@ -290,11 +352,11 @@ func Canonical(value any) ([]byte, error) {
 				if i > 0 {
 					b.WriteByte(',')
 				}
-				if e := emit(k); e != nil {
+				if e := emit(k, depth); e != nil {
 					return e
 				}
 				b.WriteByte(':')
-				if e := emit(x[k]); e != nil {
+				if e := emit(x[k], depth); e != nil {
 					return e
 				}
 			}
@@ -304,7 +366,7 @@ func Canonical(value any) ([]byte, error) {
 		}
 		return nil
 	}
-	if err := emit(value); err != nil {
+	if err := emit(value, 0); err != nil {
 		return nil, err
 	}
 	return b.Bytes(), nil
