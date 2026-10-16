@@ -14,10 +14,8 @@ import (
 
 // Absolute synthetic paths only: these tests never create files or run commands.
 func npmPaths() (string, string, string) {
-	root := filepath.Join(string(filepath.Separator), "owned")
-	if filepath.VolumeName(os.TempDir()) != "" {
-		root = filepath.Join(filepath.VolumeName(os.TempDir())+string(filepath.Separator), "owned")
-	}
+	// Keep even SDK executable-extension metadata checks in the owned temp tree.
+	root := filepath.Join(os.TempDir(), "npm-process-synthetic")
 	return filepath.Join(root, "node"), filepath.Join(root, "target"), filepath.Join(root, "home")
 }
 func expectedNPMFlags(home string) []string {
