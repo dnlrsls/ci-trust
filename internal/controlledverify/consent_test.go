@@ -92,3 +92,57 @@ func TestNoDispatchEnvironmentOrAgentBooleanConsent(t *testing.T) {
 		})
 	}
 }
+
+func TestHumanDecisionCommentLineEnding(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prefix string
+		suffix string
+		allow  bool
+	}{
+		{name: "exact", allow: true},
+		{name: "lf", suffix: "\n", allow: true},
+		{name: "crlf", suffix: "\r\n", allow: true},
+		{name: "bare-cr", suffix: "\r"},
+		{name: "two-lf", suffix: "\n\n"},
+		{name: "two-crlf", suffix: "\r\n\r\n"},
+		{name: "mixed-endings", suffix: "\n\r\n"},
+		{name: "leading-newline", prefix: "\n"},
+		{name: "leading-space", prefix: " "},
+		{name: "trailing-space", suffix: " "},
+		{name: "trailing-tab-lf", suffix: "\t\n"},
+		{name: "extra-line", suffix: "\nextra"},
+		{name: "extra-text-crlf", suffix: " extra\r\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, run, reviews, now := consentFixture(t)
+			reviews[0].Comment = tc.prefix + reviews[0].Comment + tc.suffix
+			_, err := verifyHumanDecision(p, run, reviews, 111, now)
+			if (err == nil) != tc.allow {
+				t.Fatalf("comment %q: allowed=%v, want %v", reviews[0].Comment, err == nil, tc.allow)
+			}
+		})
+	}
+}
+
+func TestHumanDecisionLineEndingDoesNotRelaxBinding(t *testing.T) {
+	for _, name := range []string{"wrong-digest", "wrong-user", "wrong-environment", "expired"} {
+		t.Run(name, func(t *testing.T) {
+			p, run, reviews, now := consentFixture(t)
+			switch name {
+			case "wrong-digest":
+				reviews[0].Comment = "approve " + strings.Repeat("0", 64)
+			case "wrong-user":
+				reviews[0].User.ID++
+			case "wrong-environment":
+				reviews[0].Environments[0].ID++
+			case "expired":
+				now = now.Add(time.Hour)
+			}
+			reviews[0].Comment += "\r\n"
+			if _, err := verifyHumanDecision(p, run, reviews, 111, now); err == nil {
+				t.Fatal("line ending bypassed decision binding")
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dnlrsls/ci-trust/internal/controlledplan"
@@ -53,7 +54,14 @@ func verifyHumanDecision(p controlledplan.Envelope, run runIdentity, reviews []a
 		return humanDecision{}, denied
 	}
 	review := reviews[0]
-	if review.State != "approved" || review.User.ID != owner || review.User.Type != "User" || len(review.Environments) != 1 || review.Environments[0].ID != environmentID || review.Comment != "approve "+checked.BindingDigest {
+	// Accept one terminal text-area line ending, not arbitrary whitespace.
+	comment := review.Comment
+	if strings.HasSuffix(comment, "\r\n") {
+		comment = strings.TrimSuffix(comment, "\r\n")
+	} else {
+		comment = strings.TrimSuffix(comment, "\n")
+	}
+	if review.State != "approved" || review.User.ID != owner || review.User.Type != "User" || len(review.Environments) != 1 || review.Environments[0].ID != environmentID || comment != "approve "+checked.BindingDigest {
 		return humanDecision{}, denied
 	}
 	expires, err := time.Parse(time.RFC3339, checked.ExpiresAt)
