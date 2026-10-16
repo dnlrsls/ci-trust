@@ -1,7 +1,8 @@
 # Offline lint sensitivity preparation (#9)
 
-**Status: pure classifier, owned fixture data, inert ESLint invocation descriptor
-and bounded JSON normalizer only. No process executor, pinned runtime image,
+**Status: pure classifier, owned fixture data, inert ESLint invocation descriptor,
+bounded JSON normalizer and internal launcher-receipt framing candidate only.
+No process executor, pinned runtime image,
 public `verify` command, or real sensitivity evidence is shipped by this unit.
 #9 acceptance remains open. The separately recorded [bounded #8 acceptance](https://github.com/dnlrsls/ci-trust/issues/8#issuecomment-6206909812)
 does not authorize ESLint execution.**
