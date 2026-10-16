@@ -1,7 +1,13 @@
-name: Owned image archive and plan review (NO execution)
+name: Owned image preparation and opt-in controlled proof
 
 'on':
   workflow_dispatch:
+    inputs:
+      execution_proof:
+        description: Prepare an execution plan for exact human approval (not execution consent)
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +21,10 @@ env:
 jobs:
   prepare:
     name: Prepare archive and display exact plan - no Docker
-    if: github.repository == 'dnlrsls/ci-trust' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'dnlrsls/ci-trust' && github.actor == github.repository_owner &&
+      (github.ref == 'refs/heads/main' ||
+       (inputs.execution_proof == true && github.ref == 'refs/heads/feat/issue8-real-isolation'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -30,7 +39,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.4'
           cache: false
       - name: Compile and inspect only the owned archive
         shell: bash
@@ -46,29 +55,46 @@ jobs:
       - name: Display full immutable plan before the protected boundary
         id: plan
         shell: bash
+        env:
+          EXECUTION_PROOF: ${{ inputs.execution_proof }}
         run: |
           set -euo pipefail
           prep="$GITHUB_WORKSPACE/.git/owned-image-ci"
           export GOCACHE="$prep/cache" TEMP="$prep/tmp" TMP="$prep/tmp" TMPDIR="$prep/tmp"
-          snapshot="$(git archive --format=tar "$GITHUB_SHA" | sha256sum | cut -d' ' -f1)"
-          image="$(jq -er '.image_id' "$prep/image.json")"
-          go run ./internal/controlledplan/cmd/controlled-plan prepare --snapshot "$snapshot" --image "$image" --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" > "$prep/plan.json"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          if [[ "$EXECUTION_PROOF" == true ]]; then
+            go run ./internal/controlledverify/cmd/controlled-verify prepare --source "$GITHUB_WORKSPACE" --archive "$prep/image.tar" --binary "$prep/owned-smoke" --marker tools/owned-smoke/root-marker --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" > "$prep/plan.json"
+          else
+            snapshot="$(git archive --format=tar "$GITHUB_SHA" | sha256sum | cut -d' ' -f1)"
+            image="$(jq -er '.image_id' "$prep/image.json")"
+            go run ./internal/controlledplan/cmd/controlled-plan prepare --snapshot "$snapshot" --image "$image" --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" > "$prep/plan.json"
+          fi
           printf 'plan=%s\n' "$(base64 -w0 "$prep/plan.json")" >> "$GITHUB_OUTPUT"
           printf 'binding=%s\n' "$(jq -er '.binding_digest' "$prep/plan.json")" >> "$GITHUB_OUTPUT"
           {
-            printf '## Preparation only: review this exact plan\n\n'
-            printf 'No image was loaded and no container will start. This is not runtime consent or isolation proof.\n\n'
-            printf 'Snapshot = SHA-256 of git archive for the recorded source revision; runtime remeasurement is not integrated.\n\n'
+            if [[ "$EXECUTION_PROOF" == true ]]; then
+              printf '## Review the exact owned execution plan\n\n'
+              printf 'Preparation used no Docker. Execution requires your exact human decision below; dispatch alone is not consent.\n\n'
+              printf 'Environment: a fresh GitHub-hosted ubuntu-24.04 job, local Linux Docker Unix socket. Only the pinned owned tool runs; no target code, host mounts, network or credential forwarding.\n\n'
+              printf 'The untagged immutable image is retained; only exact-ID/owner containers are removed. Residual limits: shared host kernel and trusted daemon; bounded observations are not an absolute escape or security guarantee.\n\n'
+              printf 'The plan expires after one hour. Read all case limits/effects. If you authorize THIS plan, approve the ci-trust-controlled-verification Environment with the exact comment: `approve %s`. Never approve a changed or expired plan.\n\n' "$(jq -er '.binding_digest' "$prep/plan.json")"
+              printf 'Live owned source is measured before review and immediately before each tool start. Execution records bounded tool output, timeout/cancellation/output-limit observations, owned cleanup and final source integrity.\n\n'
+            else
+              printf '## Preparation only: review this exact plan\n\n'
+              printf 'No image was loaded and no container will start. This is not runtime consent or isolation proof.\n\n'
+              printf 'Snapshot = SHA-256 of git archive for the recorded source revision; runtime remeasurement is not integrated in preparation-only mode.\n\n'
+            fi
             printf 'Image archive inspection:\n```json\n'
             cat "$prep/image.json"
             printf '\n```\nFull plan, limits, effects and run binding:\n```json\n'
             cat "$prep/plan.json"
-            printf '\n```\nThe configured Environment boundary reviews only these preparation bytes.\n'
+            printf '\n```\nEnvironment approval alone is not execution consent: the execution command independently checks the exact human comment and current source/run/attempt/expiry. Default mode remains preparation only.\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
   review:
     name: Check exact plan after configured review - NO execution
     needs: prepare
+    if: ${{ !inputs.execution_proof }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
@@ -83,7 +109,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.4'
           cache: false
       - name: Recheck upstream bytes and current run context after boundary
         shell: bash
@@ -104,3 +130,64 @@ jobs:
             printf '\n```\nNo Consent was created; no runtime, catalog admission or container execution occurred.\n'
             printf 'Environment policy/reviewer audit must be independently observed; this output alone is not proof of human approval.\n'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  execute:
+    name: Execute only after authenticated exact human plan review
+    needs: prepare
+    if: ${{ inputs.execution_proof }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    environment:
+      name: ci-trust-controlled-verification
+      url: https://github.com/dnlrsls/ci-trust/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Check out the exact reviewed source without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up the exact reviewed compiler
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Reproduce owned image data and build the fixed verifier - no Docker
+        shell: bash
+        env:
+          PLAN_BASE64: ${{ needs.prepare.outputs.plan }}
+        run: |
+          set -euo pipefail
+          umask 077
+          prep="$GITHUB_WORKSPACE/.git/controlled-proof"
+          mkdir -p "$prep/tmp" "$prep/cache" "$prep/docker-config"
+          export GOCACHE="$prep/cache" TEMP="$prep/tmp" TMP="$prep/tmp" TMPDIR="$prep/tmp"
+          printf '%s' "$PLAN_BASE64" | base64 --decode > "$prep/plan.json"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o "$prep/owned-smoke" ./internal/ownedprobe/cmd/owned-smoke
+          go run ./internal/ownedimage/cmd/owned-image pack --binary "$prep/owned-smoke" --marker tools/owned-smoke/root-marker > "$prep/image.tar"
+          go build -trimpath -buildvcs=false -o "$prep/controlled-verify" ./internal/controlledverify/cmd/controlled-verify
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Authenticate the exact human decision then record bounded execution
+        shell: bash
+        env:
+          EXPECTED_BINDING: ${{ needs.prepare.outputs.binding }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prep="$GITHUB_WORKSPACE/.git/controlled-proof"
+          set +e
+          "$prep/controlled-verify" execute --source "$GITHUB_WORKSPACE" --archive "$prep/image.tar" --binary "$prep/owned-smoke" --marker tools/owned-smoke/root-marker --input "$prep/plan.json" --binding "$EXPECTED_BINDING" > "$prep/execution.json" 2> "$prep/execution.stderr"
+          result=$?
+          set -e
+          {
+            printf '## Owned execution record - not a security PASS\n\n'
+            printf 'Verifier exit: %s. UNVERIFIABLE is not PASS; image retention is deliberate.\n\n' "$result"
+            printf 'Exact bounded record (including raw tool observations and cleanup results):\n```json\n'
+            cat "$prep/execution.json"
+            printf '\n```\nFixed verifier diagnostics:\n```text\n'
+            cat "$prep/execution.stderr"
+            printf '\n```\nReview observed/inferred/unverifiable tool checks separately. No exit code alone proves isolation or efficacy.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
