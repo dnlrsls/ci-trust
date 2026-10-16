@@ -28,6 +28,16 @@ type Envelope struct {
 	Repository    string      `json:"repository"`
 	Version       int         `json:"version"`
 	Scope         string      `json:"scope"`
+	// Execution-only fields are omitted from existing preparation envelopes.
+	IssuedAt           string        `json:"issued_at,omitempty"`
+	ExpiresAt          string        `json:"expires_at,omitempty"`
+	ArchiveSHA256      string        `json:"archive_sha256,omitempty"`
+	BinarySHA256       string        `json:"binary_sha256,omitempty"`
+	MarkerSHA256       string        `json:"marker_sha256,omitempty"`
+	LayerDiffID        string        `json:"layer_diff_id,omitempty"`
+	PreparationEffects string        `json:"preparation_effects,omitempty"`
+	ImageActionWall    time.Duration `json:"image_action_wall,omitempty"`
+	Cases              *ProofCases   `json:"cases,omitempty"`
 }
 
 var hex64 = regexp.MustCompile(`^[a-f0-9]{64}$`)

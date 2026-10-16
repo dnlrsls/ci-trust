@@ -35,6 +35,10 @@ type LocalDocker struct {
 	ready           bool
 	name, id, owner string
 	attempted       bool
+	loadAttempted   bool
+	loadVerified    bool
+	loadedImage     string
+	oomEvent        *bool
 }
 
 // NewLocalDocker requires a trusted absolute executable and an existing empty
@@ -66,12 +70,23 @@ func (c *executableDocker) call(ctx context.Context, output io.Writer, args ...s
 	if len(args) == 3 && args[0] == "start" && args[1] == "--attach" && containerID.MatchString(args[2]) {
 		limit = time.Minute
 	}
+	return c.invoke(ctx, output, nil, limit, args...)
+}
+
+// load has no pathname, registry, platform or caller-provided argv. Stdin carries
+// only independently inspected archive bytes, never an inherited input stream.
+func (c *executableDocker) load(ctx context.Context, archive []byte) (string, error) {
+	return c.invoke(ctx, nil, bytes.NewReader(archive), 20*time.Second, "image", "load", "--quiet")
+}
+
+func (c *executableDocker) invoke(ctx context.Context, output io.Writer, input io.Reader, limit time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	argv := append([]string{"--config", c.config, "--host", "unix:///var/run/docker.sock"}, args...)
 	cmd := exec.CommandContext(ctx, c.path, argv...)
 	cmd.Env = []string{"HOME=" + c.config, "DOCKER_CONFIG=" + c.config, "LANG=C", "LC_ALL=C"}
 	cmd.WaitDelay = 200 * time.Millisecond
+	cmd.Stdin = input
 	b := &boundedOutput{max: 64 << 10, cancel: cancel}
 	if output == nil {
 		cmd.Stdout = b
@@ -116,9 +131,37 @@ func (d *LocalDocker) Preflight(ctx context.Context, p Plan) error {
 		return errors.New("runtime already used; construct a fresh instance")
 	}
 	d.ready = false
+	if d.loadAttempted && (!d.loadVerified || p.Image != d.loadedImage) {
+		return errors.New("owned image load unverified or plan image changed")
+	}
 	if d.host != "linux" || d.client == nil || !valid(p) {
 		return errors.New("unsupported local Linux scope or plan")
 	}
+	if err := d.checkDaemon(ctx); err != nil {
+		return err
+	}
+	var images []struct {
+		ID     string `json:"Id"`
+		OS     string `json:"Os"`
+		Config struct {
+			Volumes              map[string]json.RawMessage
+			Env, Entrypoint, Cmd []string
+			Healthcheck          json.RawMessage
+		}
+	}
+	s, err := d.client.call(ctx, nil, "image", "inspect", p.Image)
+	if err != nil {
+		return fmt.Errorf("local immutable image unavailable: %w", err)
+	}
+	if json.Unmarshal([]byte(s), &images) != nil || len(images) != 1 || images[0].ID != p.Image || images[0].OS != "linux" || len(images[0].Config.Volumes) != 0 || len(images[0].Config.Env) != 0 || len(images[0].Config.Entrypoint) != 0 || len(images[0].Config.Cmd) != 0 || (len(images[0].Config.Healthcheck) != 0 && string(images[0].Config.Healthcheck) != "null") {
+		return errors.New("unsupported image defaults or identity")
+	}
+	d.plan = p
+	d.ready = true
+	return nil
+}
+
+func (d *LocalDocker) checkDaemon(ctx context.Context) error {
 	var info struct {
 		OSType, CgroupVersion                          string
 		MemoryLimit, SwapLimit, PidsLimit, CpuCfsQuota bool
@@ -140,24 +183,6 @@ func (d *LocalDocker) Preflight(ctx context.Context, p Plan) error {
 	if !seccomp {
 		return errors.New("default seccomp unavailable")
 	}
-	var images []struct {
-		ID     string `json:"Id"`
-		OS     string `json:"Os"`
-		Config struct {
-			Volumes              map[string]json.RawMessage
-			Env, Entrypoint, Cmd []string
-			Healthcheck          json.RawMessage
-		}
-	}
-	s, err = d.client.call(ctx, nil, "image", "inspect", p.Image)
-	if err != nil {
-		return fmt.Errorf("local immutable image unavailable: %w", err)
-	}
-	if json.Unmarshal([]byte(s), &images) != nil || len(images) != 1 || images[0].ID != p.Image || images[0].OS != "linux" || len(images[0].Config.Volumes) != 0 || len(images[0].Config.Env) != 0 || len(images[0].Config.Entrypoint) != 0 || len(images[0].Config.Cmd) != 0 || (len(images[0].Config.Healthcheck) != 0 && string(images[0].Config.Healthcheck) != "null") {
-		return errors.New("unsupported image defaults or identity")
-	}
-	d.plan = p
-	d.ready = true
 	return nil
 }
 
@@ -219,6 +244,11 @@ func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w i
 		return -1, err
 	}
 	d.id = id // Removal authority exists only after exact ID, image and secret label match.
+	var proofOutput *boundedOutput
+	if d.plan.Config == "owned-proof-v1" {
+		proofOutput = &boundedOutput{max: d.plan.Limits.OutputBytes, cancel: cancel}
+		w = io.MultiWriter(w, proofOutput)
+	}
 	_, attachErr := d.client.call(ctx, w, "start", "--attach", id)
 	if ctx.Err() != nil {
 		return -1, ctx.Err()
@@ -227,9 +257,24 @@ func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w i
 	if err != nil {
 		return -1, err
 	}
+	if row.State.OOMKilled != nil {
+		event := *row.State.OOMKilled
+		d.oomEvent = &event
+	}
 	started, err := time.Parse(time.RFC3339Nano, row.State.StartedAt)
-	if err != nil || started.IsZero() || row.State.Status != "exited" || row.State.Error == nil || *row.State.Error != "" || row.State.OOMKilled == nil || *row.State.OOMKilled || row.State.ExitCode == nil || *row.State.ExitCode < 0 || *row.State.ExitCode > 255 {
+	if err != nil || started.IsZero() || row.State.Status != "exited" || row.State.Error == nil || *row.State.Error != "" || row.State.OOMKilled == nil || row.State.ExitCode == nil || *row.State.ExitCode < 0 || *row.State.ExitCode > 255 {
 		return -1, errors.New("startup, resource or infrastructure failure")
+	}
+	if *row.State.OOMKilled {
+		// The native proof deliberately tests an owned child's cgroup ceiling.
+		// Never infer survival from OOMKilled alone or relax legacy behavior.
+		if proofOutput == nil || *row.State.ExitCode != 0 || attachErr != nil {
+			return -1, errors.New("startup, resource or infrastructure failure")
+		}
+		output, overflow := proofOutput.state()
+		if overflow || !completedOwnedProof(output) {
+			return -1, errors.New("owned parent completion after OOM event unverified")
+		}
 	}
 	if attachErr != nil {
 		// Matching client/container statuses cannot prove complete transport.
@@ -238,6 +283,19 @@ func (d *LocalDocker) Start(ctx context.Context, name string, args []string, w i
 	}
 	return *row.State.ExitCode, nil
 }
+
+// OOMEvent returns the independently inspected cgroup OOM flag, not a claim
+// about which process was killed. Nil means no final flag was observed.
+func (d *LocalDocker) OOMEvent() *bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.oomEvent == nil {
+		return nil
+	}
+	value := *d.oomEvent
+	return &value
+}
+
 func (d *LocalDocker) Remove(ctx context.Context, name string) error {
 	if err := d.admit(ctx); err != nil {
 		return err
