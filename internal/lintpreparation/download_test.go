@@ -116,6 +116,10 @@ func TestDownload(t *testing.T) {
 		}{
 			{target: "https://storage.googleapis.com/object?X-Goog-Signature=secret", calls: 2},
 			{target: "https://GcR.Io:443/object", calls: 2},
+			{target: "https://nodejs.org/next#", category: "validation", calls: 1},
+			{target: "/next#", category: "validation", calls: 1},
+			{target: "/next", calls: 2},
+			{target: "/next%23part?value=%23", calls: 2},
 			{target: "https://ſtorage.googleapis.com/x", category: "validation", calls: 1},
 			{target: "http://nodejs.org/x", category: "validation", calls: 1},
 			{target: "https://evil.test/secret", category: "validation", calls: 1},

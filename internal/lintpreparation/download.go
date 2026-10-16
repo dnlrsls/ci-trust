@@ -77,7 +77,9 @@ func downloadWith(ctx context.Context, stage, rawURL, expected string, transport
 			defer closer.CloseIdleConnections()
 		}
 		client := &http.Client{Transport: rt, Timeout: downloadTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if !checkedDownloadURL(req.URL.String()) {
+			// URL.String loses an empty fragment delimiter. Inspect the original
+			// Location as well as the resolved absolute URL before following.
+			if (req.Response != nil && strings.Contains(req.Response.Header.Get("Location"), "#")) || !checkedDownloadURL(req.URL.String()) {
 				return NewPreparationFailure(stage, "validation", "")
 			}
 			if len(via) > downloadRedirects {
