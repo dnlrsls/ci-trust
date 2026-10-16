@@ -56,6 +56,9 @@ type Result struct {
 	ExitCode        int
 	Output          string
 	CleanupVerified bool
+	// OOMEvent is the final inspected cgroup flag, not PID 1's cause of death.
+	// Nil is unavailable; true remains explicit even for expected child OOM.
+	OOMEvent *bool
 }
 
 // Snapshot must remeasure the same target immediately before Start, without executing it.
@@ -148,6 +151,9 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	name := uniqueName()
 	out := &boundedOutput{max: p.Limits.OutputBytes, cancel: cancel}
 	code, runErr := r.runtime.Start(runCtx, name, dockerArgs(p, name), out)
+	if source, ok := r.runtime.(interface{ OOMEvent() *bool }); ok {
+		result.OOMEvent = source.OOMEvent()
+	}
 	cleanupCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
 	cleanupErr := r.runtime.Remove(cleanupCtx, name)
 	stop()
