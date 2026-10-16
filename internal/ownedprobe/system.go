@@ -33,12 +33,13 @@ type nativeSystem struct {
 	uid    func() int
 	ops    fileOps
 	owned  fs.FileInfo
+	proof  nativeProofOps
 }
 
 // NewSystem constructs but does not invoke the real adapter. Run validates
 // arguments before invoking its operations. Non-Linux hosts fail closed.
 func NewSystem() System {
-	return &nativeSystem{osName: runtime.GOOS, uid: os.Getuid, ops: fileOps{
+	return &nativeSystem{osName: runtime.GOOS, uid: os.Getuid, proof: realProofOps(), ops: fileOps{
 		open: openNative, lstat: os.Lstat, same: os.SameFile, remove: os.Remove,
 	}}
 }

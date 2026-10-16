@@ -1,11 +1,13 @@
 # Controlled-fixture runner: bounded local Docker backend
 
-**Status: backend code and owned-fake tests only; S8 real-isolation acceptance
-remains OPEN.** No production adapter/image catalog or executable plan binding
-is shipped. The separate [image archive preparation](owned-image.md) and
-[exact-plan preparation binding](controlled-plan.md) provide source-only inputs
-for a manual review workflow, not runtime admission or execution consent. This unit ran ZERO real Docker commands, containers or image
-operations. Fake tests are not isolation evidence or execution consent.
+**Status: internal owned execution route implemented; S8 real-isolation acceptance
+remains OPEN.** The [owned execution route](owned-execution-route.md) connects one
+pinned image candidate, exact-plan human authentication, bounded image loading
+and the runner through a default-off protected workflow. No real Docker commands,
+containers or image operations have been run for this change. Source review,
+fake tests and preparation are not isolation evidence or execution consent.
+The [image archive preparation](owned-image.md) and
+[preparation binding](controlled-plan.md) retain their non-executing default mode.
 
 ## Public boundary
 
@@ -19,17 +21,22 @@ a bounded immutable target view; it must not execute target code. Files changing
 after remeasurement remain a TOCTOU limitation, but the repository is never
 mounted or passed to the fixture.
 
-A future terminal UI must display the plan and obtain an actual human decision.
 `Consent` is a transport DTO, not authentication or proof of human presence.
-Never build it from agent-provided tool arguments or an unsafe yes flag. There
-is deliberately no CLI yet. Synthetic approval in these tests is test-only.
+Never build it from agent-provided tool arguments or an unsafe yes flag. The
+separate internal `controlled-verify` command authenticates an exact human plan
+review before creating this DTO; the public `ci-trust` CLI still has no `verify`
+mode. Synthetic approval in runner unit tests is test-only.
 
 `NewOwned` is trusted application composition, not a target-facing registration
-API. Only the fixed smoke adapter/tool, fixture and config identities are
-accepted. Its image ID must be an immutable SHA-256 identity from a future
-reviewed catalog. A syntactically valid hash does **not** establish trusted image
-contents. No production catalog currently authorizes any image. The smoke
-entrypoint is `/ci-trust/owned-smoke`; this package does not create that image.
+API. Only adapter/tool `owned-smoke-v1`, fixture `smoke-v1`, and the literal
+configs `owned-v1` (legacy) or `owned-proof-v1` (opt-in) are accepted. The
+validated config alone determines the final `--config=` argument; no arbitrary
+profile, executable or argument vector is admitted. Legacy vectors are unchanged.
+Its image ID must be an immutable SHA-256 identity admitted by trusted composition.
+A syntactically valid hash does **not** establish trusted image contents. The
+separate compiled catalog pins one owned candidate, not arbitrary images or real
+isolation acceptance. The smoke entrypoint is `/ci-trust/owned-smoke`; this package
+does not build that image.
 ESLint/config/plugin support and sensitivity claims belong to #9, not this unit.
 
 ## Runtime contract and intended Docker policy
@@ -67,17 +74,31 @@ proxies and target variables are suppressed. Only HOME/DOCKER_CONFIG pointing at
 the clean directory and C locale are supplied; PATH is absent. The owned
 executable test compares the entire child environment against that independent
 allowlist, permitting only Go's required SYSTEMROOT addition on Windows test
-hosts (not Windows runtime support). There is no image acquisition, runtime provisioning,
-stdin forwarding or host fallback.
+hosts (not Windows runtime support). There is no registry acquisition, runtime
+provisioning, ambient stdin forwarding or host fallback. `LoadOwnedImage` accepts
+only independently inspected owned archive bytes on stdin, after trusted
+composition authenticates the exact human plan. It checks daemon capabilities
+and final image ID/architecture/layer/empty defaults, with a total 20-second wall.
+Failed loading cannot be retried or bypassed through same-instance preflight.
+The image is retained untagged; no image deletion authority is inferred.
 
 Preflight uses bounded `info` and immutable-ID `image inspect` metadata only.
 Image volumes, environment, entrypoint, command and healthcheck defaults are
 refused. Image contents must separately be reviewed/catalogued; an ID is not
-trust. Each metadata command shares a 64 KiB stdout/stderr bound. Every client
-command has a two-second ceiling and 200 ms WaitDelay, additionally bounded by
-its parent context. Consequently long-running smoke tools are conservatively
-UNVERIFIABLE even if their displayed wall limit is greater than two seconds.
-The wall limit is an upper bound, not a guaranteed minimum execution duration.
+trust. Each metadata command shares a 64 KiB stdout/stderr bound. Metadata,
+create, inspect, remove and list commands retain a two-second client ceiling.
+Only the exact `start --attach ID` operation instead has a one-minute ceiling,
+the maximum valid owned wall limit. All commands retain 200 ms WaitDelay and
+honor earlier parent deadlines. `LocalDocker.Start` itself imposes the owned
+plan wall across creation, ownership inspection, attachment and final inspection,
+even for a direct caller using `context.Background()`. Runner also bounds Start
+by that wall. The effective attach deadline is the earliest caller/owned wall
+or hard one-minute client ceiling, not the metadata two-second deadline.
+WaitDelay bounds pipe-drain waiting after cancellation; process scheduling and
+cleanup mean wall limits are not exact end-to-end return-time guarantees.
+Runner cleanup retains its independent three-second context, with each cleanup
+client call still capped at two seconds. Tool streams retain Runner's combined
+output bound. None of these fake-tested deadlines proves real runtime behavior.
 
 The backend accepts only the exact Runner-owned vector and is single-use after
 a start attempt. Concurrent operations are rejected immediately, rather than
@@ -85,8 +106,13 @@ waiting behind a client call and losing cancellation. Sequential Runner cleanup
 still uses its independent bounded context. It translates `run` to fixed-policy `create`, binds the returned
 ID, then uses `start --attach ID`. Tool output goes to Runner's combined stream
 bound. After attachment, inspect must establish a nonzero start timestamp,
-exited state, no daemon state error and no OOM indication. Transport/startup
-errors remain infrastructure outcomes, not validator failure. A nonzero client
+exited state and no daemon state error. Legacy mode still rejects any OOM flag.
+The opt-in proof alone may tolerate its expected owned-child cgroup OOM event,
+requiring inspected main exit zero, successful attachment and a complete bounded
+twelve-check report with increasing resource counters. Parent death and absent,
+failed or ambiguous evidence remain rejected. `Result.OOMEvent` retains the raw
+inspected cgroup flag, or null when unavailable; it is not a PID 1 death verdict.
+Transport/startup errors remain infrastructure outcomes, not validator failure. A nonzero client
 exit is ambiguous even when it matches the independently inspected container
 exit: it cannot prove that attach transport completed. Any attach client error
 therefore remains UNVERIFIABLE, with the inspected container exit retained when
@@ -162,11 +188,13 @@ malicious images, daemon compromise, kernel escapes and resource enforcement
 failures remain risks. Do not admit arbitrary code/config/plugins or elevate
 static audit evidence based on this scaffold.
 
-## Owned smoke source: partial observations only (T8C)
+## Legacy owned-v1 source: partial observations only (T8C)
 
 `internal/ownedprobe/cmd/owned-smoke` is a standalone internal command, not a
-public CLI mode or host fallback. Source and a scratch-image **recipe** are
-provided; no image is provisioned, registered or approved. Do not run the valid
+public CLI mode or host fallback. This section describes the unchanged legacy
+profile. The separate [opt-in proof profile](owned-probe-proof.md) and
+[execution route](owned-execution-route.md) add bounded observations and a pinned
+image candidate; no image has actually been provisioned or approved for a real run. Do not run the valid
 probe on the host. Unit tests inject all kernel and filesystem operations,
 including adapter descriptor operations; they do not access real procfs, root
 markers, credentials or network. Existing audit/report CLI code shares no new
@@ -182,20 +210,23 @@ code, so a differential CLI campaign does not apply to this unit.
 | CPU / memory / swap / pids | 1 CPU (`100000 100000`), 128 MiB, zero, 32 |
 | Scratch | `/tmp` tmpfs, 8 MiB, rw/nosuid/nodev/noexec |
 | Wall / combined output | 10 seconds upper bound / 64 KiB, enforced by harness |
-| Client ceiling | Existing backend two-second ceiling remains unchanged |
+| Client ceiling | Metadata/create/inspect/remove/list: 2 seconds; attach: earlier caller/owned wall, hard maximum 1 minute |
 
 This is one source profile, not a default image, production catalog or approved
 plan. The probe requires cgroup v2 rooted at `0::/` and reads only fixed bounded
 control files. Other layouts, representations or unavailable controls fail
 closed rather than discovering arbitrary cgroup paths. CPU, memory, swap and
 pids values are **configuration observations**, not stress/enforcement proof.
-The wall upper bound does not override the shorter backend client ceiling.
+Attachment honors the owned wall rather than the shorter metadata ceiling;
+this is harness behavior, not observed container timeout enforcement.
 
-`--help` alone prints two lines and exits 0 without provider calls:
+`--help` alone prints the legacy description plus the opt-in profile and exits 0
+without provider calls:
 
 ```text
 Usage: owned-smoke --fixture=smoke-v1 --config=owned-v1
 Owned-fixture-only partial observations; not isolation proof.
+Opt-in: --fixture=smoke-v1 --config=owned-proof-v1 (bounded observations; unavailable controls fail closed).
 ```
 
 Unknown, missing, duplicate, positional or split-value arguments exit 2 with
@@ -212,8 +243,8 @@ not-proven: resource-enforcement network credentials wall-time output-limit full
 
 Each line ends with LF. This is not report-v1 data, a validator verdict or
 `isolation_proof=true`. Network and credential observations are deliberately
-absent: there is no network, environment or credential API. No CPU/pid/OOM stress
-modes exist. Wall/output enforcement, cancellation and runtime cleanup still
+absent from `owned-v1`: the legacy System API has no network, environment or
+credential access. Legacy mode has no CPU/pid/OOM demand operations. Wall/output enforcement, cancellation and runtime cleanup still
 require separately approved real-runtime evidence.
 
 ### Owned file effects and limits

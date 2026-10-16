@@ -29,7 +29,7 @@ const (
 	changedMarker = "ci-trust owned-smoke-v1 root marker write check\n"
 	scratchPath   = "/tmp/ci-trust-owned-smoke-v1"
 	scratchData   = "owned-smoke-v1 scratch\n"
-	help          = "Usage: owned-smoke --fixture=smoke-v1 --config=owned-v1\nOwned-fixture-only partial observations; not isolation proof.\n"
+	help          = "Usage: owned-smoke --fixture=smoke-v1 --config=owned-v1\nOwned-fixture-only partial observations; not isolation proof.\nOpt-in: --fixture=smoke-v1 --config=owned-proof-v1 (bounded observations; unavailable controls fail closed).\n"
 	observations  = "owned-smoke: partial owned-fixture-only\nobserved: uid65534 caps0 no-new-privileges seccomp-filter root-marker-erofs scratch-write-cleanup cgroup-v2-profile\nnot-proven: resource-enforcement network credentials wall-time output-limit full-isolation\n"
 )
 
@@ -42,8 +42,10 @@ func Run(args []string, system System, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	if len(args) != 2 || !((args[0] == "--fixture=smoke-v1" && args[1] == "--config=owned-v1") ||
-		(args[1] == "--fixture=smoke-v1" && args[0] == "--config=owned-v1")) {
+	proof := len(args) == 2 && ((args[0] == "--fixture=smoke-v1" && args[1] == "--config=owned-proof-v1") ||
+		(args[1] == "--fixture=smoke-v1" && args[0] == "--config=owned-proof-v1"))
+	if !proof && (len(args) != 2 || !((args[0] == "--fixture=smoke-v1" && args[1] == "--config=owned-v1") ||
+		(args[1] == "--fixture=smoke-v1" && args[0] == "--config=owned-v1"))) {
 		io.WriteString(stderr, "owned-smoke: invalid arguments\n")
 		return 2
 	}
@@ -51,13 +53,18 @@ func Run(args []string, system System, stdout, stderr io.Writer) int {
 		io.WriteString(stderr, "owned-smoke: unavailable\n")
 		return 1
 	}
+	if proof {
+		return runProof(system, stdout, stderr)
+	}
 	if _, err := io.WriteString(stdout, observations); err != nil {
 		return 1
 	}
 	return 0
 }
 
-func observe(s System) bool {
+// guardControls rechecks read-only kernel, mount and marker prerequisites.
+// It must not allocate scratch: a full authorized tmpfs is a valid test state.
+func guardControls(s System) bool {
 	if s.OS() != "linux" || s.UID() != 65534 {
 		return false
 	}
@@ -82,6 +89,13 @@ func observe(s System) bool {
 		if err != nil || !c.valid(string(data)) {
 			return false
 		}
+	}
+	return true
+}
+
+func observe(s System) bool {
+	if !guardControls(s) {
+		return false
 	}
 	if err := s.Write(markerPath, []byte(changedMarker)); !errors.Is(err, syscall.EROFS) {
 		if err == nil {
