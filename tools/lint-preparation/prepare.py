@@ -38,15 +38,33 @@ SHA = re.compile(r"sha256:[a-f0-9]{64}\Z")
 # Only owned vocabulary may reach hosted logs. Never stringify caught errors.
 STAGES = frozenset({"host-inputs", "node-download", "node-extract", "owned-manifest",
                     "npm-setup", "npm-lock", "npm-ci", "base-image", "rootfs",
+                    "base-manifest", "base-config", "base-platform", "base-layers",
+                    "base-layer-download", "base-layer-decompress", "base-layer-diff",
+                    "base-layer-import",
                     "image-validation", "artifact-write"})
 CATEGORIES = frozenset({"http", "network", "timeout", "filesystem", "archive",
                         "validation", "process-failed", "origin-denied", "unexpected"})
 
+# Fixed invariant codes only; no input-derived strings or exception text.
+REASONS = frozenset({"download-identity", "platform", "layer-count", "layer-media-type",
+                     "layer-diff-id", "json-duplicate-key", "path-unsafe", "path-invalid",
+                     "link-invalid", "layer-duplicate-or-limit", "layer-privileged",
+                     "layer-whiteout", "layer-ancestor", "layer-expanded-limit",
+                     "layer-hardlink", "layer-special-entry", "layer-type-replacement",
+                     "rootfs-limit", "rootfs-missing", "link-cycle"})
+
+
+class ValidationFailure(ValueError):
+    def __init__(self, reason):
+        self.reason = reason if reason in REASONS else None
+        super().__init__("owned validation failure")
+
 
 class PreparationFailure(Exception):
-    def __init__(self, stage, category):
+    def __init__(self, stage, category, reason=None):
         self.stage = stage if stage in STAGES else "unknown"
         self.category = category if category in CATEGORIES else "unexpected"
+        self.reason = reason if reason in REASONS else None
         super().__init__(self.stage + ":" + self.category)
 
 
@@ -75,6 +93,8 @@ def diagnostic_stage(name):
         yield
     except PreparationFailure:
         raise
+    except ValidationFailure as error:
+        raise PreparationFailure(name, "validation", error.reason) from None
     except Exception as error:
         raise PreparationFailure(name, error_category(error)) from None
 
@@ -85,10 +105,11 @@ def main():
     except Exception as error:
         # Revalidate even structured failures; no raw exception text or traceback.
         if isinstance(error, PreparationFailure):
-            failure = PreparationFailure(error.stage, error.category)
+            failure = PreparationFailure(error.stage, error.category, error.reason)
         else:
             failure = PreparationFailure("unknown", error_category(error))
-        print("owned lint preparation failed; stage=" + failure.stage + "; category=" + failure.category + "; no runtime admission or ESLint execution", file=os.sys.stderr)
+        reason = "; reason=" + failure.reason if failure.reason else ""
+        print("owned lint preparation failed; stage=" + failure.stage + "; category=" + failure.category + reason + "; no runtime admission or ESLint execution", file=os.sys.stderr)
         return 1
     return 0
 
@@ -106,7 +127,7 @@ def unique_json(data):
         result = {}
         for key, value in items:
             if key in result:
-                raise ValueError("duplicate JSON key")
+                raise ValidationFailure("json-duplicate-key")
             result[key] = value
         return result
     return json.loads(data, object_pairs_hook=pairs)
@@ -115,15 +136,15 @@ def unique_json(data):
 def safe_path(name):
     name = name.removeprefix("./").rstrip("/")
     if not name or name.startswith("/") or "\\" in name or any(p in ("", ".", "..") for p in name.split("/")):
-        raise ValueError("unsafe archive path")
+        raise ValidationFailure("path-unsafe")
     if len(name) > 4096 or any(ord(c) < 32 or ord(c) == 127 for c in name):
-        raise ValueError("invalid archive path")
+        raise ValidationFailure("path-invalid")
     return name
 
 
 def link_path(name, target):
     if not target or "\\" in target or any(ord(c) < 32 for c in target):
-        raise ValueError("invalid link")
+        raise ValidationFailure("link-invalid")
     # Absolute links refer to the image root, never the preparation host.
     joined = target.lstrip("/") if target.startswith("/") else posixpath.join(posixpath.dirname(name), target)
     normalized = posixpath.normpath(joined)
@@ -154,7 +175,7 @@ def download(url, expected):
     with opener.open(request, timeout=45) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES or digest(data) != expected:
-        raise ValueError("download size or digest mismatch")
+        raise ValidationFailure("download-identity")
     return data
 
 
@@ -166,23 +187,23 @@ def overlay(tree, data):
                 continue
             name = safe_path(member.name)
             if name in seen or len(seen) >= MAX_FILES:
-                raise ValueError("duplicate or excessive layer entries")
+                raise ValidationFailure("layer-duplicate-or-limit")
             seen.add(name)
             if member.mode & 0o6000 or member.pax_headers.get("SCHILY.xattr.security.capability"):
-                raise ValueError("privileged layer entry")
+                raise ValidationFailure("layer-privileged")
             if posixpath.basename(name).startswith(".wh."):
                 # Pinned distroless input currently needs no whiteout support.
                 # Reject rather than implement ambiguous deletion semantics.
-                raise ValueError("whiteouts require a reviewed importer change")
+                raise ValidationFailure("layer-whiteout")
             for parent in PurePosixPath(name).parents:
                 if str(parent) != "." and str(parent) in tree and tree[str(parent)][0] != "dir":
-                    raise ValueError("non-directory ancestor")
+                    raise ValidationFailure("layer-ancestor")
             if member.isdir():
                 node = ("dir", 0o555, b"")
             elif member.isfile():
                 total += member.size
                 if member.size < 0 or total > MAX_BYTES:
-                    raise ValueError("expanded layer limit")
+                    raise ValidationFailure("layer-expanded-limit")
                 node = ("file", 0o555 if member.mode & 0o111 else 0o444, archive.extractfile(member).read())
             elif member.issym():
                 link_path(name, member.linkname)
@@ -191,14 +212,14 @@ def overlay(tree, data):
                 target = safe_path(member.linkname)
                 node = resolve(tree, target)
                 if node[0] != "file":
-                    raise ValueError("unsupported hardlink")
+                    raise ValidationFailure("layer-hardlink")
             else:
-                raise ValueError("special layer entry")
+                raise ValidationFailure("layer-special-entry")
             if name in tree and tree[name][0] != node[0]:
-                raise ValueError("layer type replacement requires review")
+                raise ValidationFailure("layer-type-replacement")
             tree[name] = node
             if len(tree) > MAX_FILES or sum(len(n[2]) for n in tree.values() if n[0] == "file") > MAX_BYTES:
-                raise ValueError("rootfs bound")
+                raise ValidationFailure("rootfs-limit")
 
 
 def resolve(tree, name):
@@ -213,31 +234,41 @@ def resolve(tree, name):
                 break
         else:
             if name not in tree:
-                raise ValueError("missing rootfs path")
+                raise ValidationFailure("rootfs-missing")
             return tree[name]
-    raise ValueError("link cycle")
+    raise ValidationFailure("link-cycle")
 
 
 def base_tree():
-    manifest_bytes = download(BASE + "manifests/" + BASE_MANIFEST, BASE_MANIFEST)
-    manifest = unique_json(manifest_bytes)
-    config = unique_json(download(BASE + "blobs/" + manifest["config"]["digest"], manifest["config"]["digest"]))
-    if config["architecture"] != "amd64" or config["os"] != "linux":
-        raise ValueError("wrong base platform")
-    layers = manifest["layers"]
-    if len(layers) != len(config["rootfs"]["diff_ids"]) or len(layers) > 64:
-        raise ValueError("base layer identity mismatch")
+    with diagnostic_stage("base-manifest"):
+        manifest_bytes = download(BASE + "manifests/" + BASE_MANIFEST, BASE_MANIFEST)
+        manifest = unique_json(manifest_bytes)
+    with diagnostic_stage("base-config"):
+        config = unique_json(download(BASE + "blobs/" + manifest["config"]["digest"], manifest["config"]["digest"]))
+    with diagnostic_stage("base-platform"):
+        if config["architecture"] != "amd64" or config["os"] != "linux":
+            raise ValidationFailure("platform")
+    with diagnostic_stage("base-layers"):
+        layers = manifest["layers"]
+        diff_ids = config["rootfs"]["diff_ids"]
+        if len(layers) != len(diff_ids) or len(layers) > 64:
+            raise ValidationFailure("layer-count")
     tree = {}
     import gzip
-    for layer, diff_id in zip(layers, config["rootfs"]["diff_ids"]):
-        if layer["mediaType"] != "application/vnd.oci.image.layer.v1.tar+gzip":
-            raise ValueError("unsupported base layer")
-        compressed = download(BASE + "blobs/" + layer["digest"], layer["digest"])
-        with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
-            data = stream.read(MAX_BYTES + 1)
-        if len(data) > MAX_BYTES or digest(data) != diff_id:
-            raise ValueError("base diff ID mismatch")
-        overlay(tree, data)
+    for layer, diff_id in zip(layers, diff_ids):
+        with diagnostic_stage("base-layers"):
+            if layer["mediaType"] != "application/vnd.oci.image.layer.v1.tar+gzip":
+                raise ValidationFailure("layer-media-type")
+        with diagnostic_stage("base-layer-download"):
+            compressed = download(BASE + "blobs/" + layer["digest"], layer["digest"])
+        with diagnostic_stage("base-layer-decompress"):
+            with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
+                data = stream.read(MAX_BYTES + 1)
+        with diagnostic_stage("base-layer-diff"):
+            if len(data) > MAX_BYTES or digest(data) != diff_id:
+                raise ValidationFailure("layer-diff-id")
+        with diagnostic_stage("base-layer-import"):
+            overlay(tree, data)
     return tree, manifest
 
 
