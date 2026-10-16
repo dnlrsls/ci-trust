@@ -150,10 +150,11 @@ an owned launcher/receipt before lint admission; do not treat matching exits as
 proof of complete attachment. The upstream moving branch explains the risk,
 not a tested or pinned production client version.
 
-The [owned launcher receipt candidate](lint-launcher-receipt.md) now defines and
-tests pure framing with separate outer success and inner tool exit. It does not
-implement the launcher process or connect receipts to the runner; the real-tool
-completion gate above remains unmet.
+The [owned launcher candidate](lint-launcher-receipt.md) now includes pure framing
+and a source-only fixed process producer with independently verified pipe drainage.
+Owned helper tests exercise the exit-1/outer-exit-0 distinction without running
+Node or ESLint. It does not connect receipts to the runner or provide a pinned
+image/catalog; the real-tool completion gate above remains unmet.
 
 Next bind the fixed lint role/input, immutable image and transport-completion
 protocol to a separate reviewed catalog and exact consent path. Dependency/image

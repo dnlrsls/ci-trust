@@ -15,7 +15,7 @@ const receiptMagic = "CI-TRUST-ESLINT-RECEIPT/1"
 
 var invalidReceipt = errors.New("invalid owned ESLint receipt")
 
-// EncodeESLintReceipt frames supplied tool output for a future owned launcher.
+// EncodeESLintReceipt frames supplied tool output for the owned launcher candidate.
 // Completed is a caller assertion, not verified by encoding. The expected binding
 // must eventually cover the exact invocation/role/runtime; syntax is not authority.
 // No process, file, approval or runtime admission operation occurs here.

@@ -11,6 +11,9 @@ The [runtime preparation and integration plan](lint-runtime-plan.md) records
 candidate upstream versions, unresolved immutable pins, the Node security review
 gate and the runner transport/image changes required before admission. It does
 not select an executable catalog entry or authorize preparation/execution.
+The separate [owned launcher candidate](lint-launcher-receipt.md) implements fixed
+process capture and receipt emission, tested with owned helpers only. It is not
+connected to this package's classifier through an admitted runtime or public CLI.
 
 `internal/lintsensitivity` has no filesystem reads, subprocesses, network,
 configuration loading, consent creation, or runner connection. Its JavaScript is
