@@ -182,6 +182,15 @@ func TestInspectArchive(t *testing.T) {
 			if rule == "capability" && raw.PAXRecords["SCHILY.xattr.security.capability"] != "x" {
 				t.Fatal("lost capability")
 			}
+			if rule == "size" {
+				// Meet framing minimum without allocating the claimed file body.
+				buf.Write(make([]byte, 1024-buf.Len()))
+				visited := false
+				err := inspectHeaders(buf.Bytes(), false, func(*tar.Header, *tar.Reader) error { visited = true; return nil })
+				if ErrorCategory(err) != "validation" || visited {
+					t.Fatal("inner size guard did not reject before body visitor")
+				}
+			}
 			data, id := inspectCandidate(t, buf.Bytes(), nil, nil)
 			reject(t, data, canonical, id)
 		})
@@ -198,6 +207,59 @@ func TestInspectArchive(t *testing.T) {
 		id.ArchiveSHA256 = Digest(buf.Bytes())
 		reject(t, buf.Bytes(), inv, id)
 	})
+}
+
+func TestInspectMetadataAccounting(t *testing.T) {
+	tree := Tree{"ascii": {Kind: "dir", Mode: 0555}, "目录": {Kind: "dir", Mode: 0555}}
+	r := tar.NewReader(bytes.NewReader(imageTar(tree)))
+	for range len(tree) {
+		h, err := r.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		name, err := SafePath(h.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.Name != name+"/" {
+			t.Fatal("fixture lacks serialized directory slash")
+		}
+		if got := inspectMetadataBytes(h, name); got != int64(len(name)) {
+			t.Errorf("logical metadata for %q: got %d, want %d", name, got, len(name))
+		}
+	}
+	h := &tar.Header{Name: "link", Linkname: "../目录"}
+	if got := inspectMetadataBytes(h, "link"); got != int64(len("link")+len(h.Linkname)) {
+		t.Fatal("original target not counted")
+	}
+	b, ids, err := PackImage(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := Inventory(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := InspectArchive(b, inv, ids); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInspectTerminalBudget(t *testing.T) {
+	// Adjacent PAX record and payload block boundaries, all small allocations.
+	for _, namesize := range []int{502, 503, 504} {
+		for _, size := range []int{7168, 7169, 7680} {
+			name := strings.Repeat("a", namesize)
+			b := imageTar(Tree{name: {Kind: "file", Mode: 0444, Data: make([]byte, size)}})
+			budget := inspectLayerBudget(int64(size), int64(len(name)), 1)
+			if namesize == 503 && size == 7169 && len(b) != 20480 {
+				t.Fatal("reproducer serialization changed")
+			}
+			if int64(len(b)) > budget {
+				t.Errorf("name=%d data=%d: encoded=%d budget=%d", namesize, size, len(b), budget)
+			}
+		}
+	}
 }
 
 func TestInspectContainerBudgets(t *testing.T) {

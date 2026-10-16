@@ -11,16 +11,24 @@ const inspectJSONLimit int64 = 4096
 
 // Each entry needs a header and up to 511 payload padding bytes. A local PAX
 // header adds 512 plus 511 padding; its two records add at most 64 bytes of
-// lengths/keys/newlines beyond path+target. Metadata itself is capped at
-// MaxBytes independently of file payload. Reserve a full 10240-byte end record.
+// lengths/keys/newlines and the serialized directory slash beyond logical
+// path+target. Metadata itself is capped at MaxBytes independently of payload.
+// After two EOF blocks, block-aligned data needs at most 10240-512 padding.
+const inspectTerminalAllowance int64 = 2*512 + (10240 - 512)
+
 func inspectLayerBudget(data, metadata, files int64) int64 {
-	return data + metadata + files*(512+511+512+511+64) + 10240
+	return data + metadata + files*(512+511+512+511+64) + inspectTerminalAllowance
 }
 
-const inspectLayerLimit int64 = MaxBytes + MaxBytes + MaxFiles*(512+511+512+511+64) + 10240
+const inspectLayerLimit int64 = MaxBytes + MaxBytes + MaxFiles*(512+511+512+511+64) + inspectTerminalAllowance
 
 // Outer has three short ASCII names, no PAX, two fixed-small JSON bodies.
-const inspectOuterLimit int64 = inspectLayerLimit + 2*inspectJSONLimit + 3*(512+511) + 10240
+const inspectOuterLimit int64 = inspectLayerLimit + 2*inspectJSONLimit + 3*(512+511) + inspectTerminalAllowance
+
+// inspectMetadataBytes accounts logical names and original link text.
+func inspectMetadataBytes(h *tar.Header, canonicalName string) int64 {
+	return int64(len(canonicalName) + len(h.Linkname))
+}
 
 func inspectEqual(a, b any) bool {
 	x, e := Canonical(a)
@@ -72,7 +80,7 @@ func inspectHeaders(data []byte, outer bool, visit func(*tar.Header, *tar.Reader
 				return NewValidationFailure("")
 			}
 		}
-		metadata += int64(len(h.Name) + len(h.Linkname))
+		metadata += inspectMetadataBytes(h, name)
 		if metadata > MaxBytes {
 			return NewValidationFailure("")
 		}
