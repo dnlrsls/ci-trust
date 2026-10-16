@@ -1,6 +1,7 @@
 """Offline owned synthetic inputs only: no package manager or network calls."""
 
 import base64
+import gzip
 import importlib.util
 import io
 import json
@@ -17,6 +18,99 @@ spec.loader.exec_module(prep)
 
 
 class PreparationTests(unittest.TestCase):
+    def base_fixture(self, members=None):
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w") as tar:
+            for name, mode, kind, target in members or [("owned", 0o555, tarfile.DIRTYPE, "")]:
+                entry = tarfile.TarInfo(name)
+                entry.mode, entry.type, entry.linkname = mode, kind, target
+                tar.addfile(entry)
+        raw = archive.getvalue()
+        compressed = gzip.compress(raw)
+        config = {"architecture": "amd64", "os": "linux", "rootfs": {"diff_ids": [prep.digest(raw)]}}
+        manifest = {"config": {"digest": prep.digest(prep.canonical(config))},
+                    "layers": [{"digest": prep.digest(compressed), "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"}]}
+        return manifest, config, compressed
+
+    def run_base(self, manifest, config, compressed):
+        # Mock every download: no network or untrusted code execution.
+        with mock.patch.object(prep, "download", side_effect=[prep.canonical(manifest), prep.canonical(config), compressed]):
+            with prep.diagnostic_stage("base-image"):
+                return prep.base_tree()
+
+    def test_base_success_and_precise_invariant_failures(self):
+        manifest, config, compressed = self.base_fixture()
+        tree, returned = self.run_base(manifest, config, compressed)
+        self.assertEqual(tree, {"owned": ("dir", 0o555, b"")})
+        self.assertEqual(returned, manifest)
+        for mutation, stage, reason in [
+            (lambda m, c: c.update(architecture="arm64"), "base-platform", "platform"),
+            (lambda m, c: c["rootfs"].update(diff_ids=[]), "base-layers", "layer-count"),
+            (lambda m, c: m["layers"][0].update(mediaType="untrusted"), "base-layers", "layer-media-type"),
+            (lambda m, c: c["rootfs"].update(diff_ids=["sha256:" + "0" * 64]), "base-layer-diff", "layer-diff-id"),
+        ]:
+            manifest, config, compressed = self.base_fixture()
+            mutation(manifest, config)
+            with self.subTest(reason=reason), self.assertRaises(prep.PreparationFailure) as caught:
+                self.run_base(manifest, config, compressed)
+            self.assertEqual((caught.exception.stage, caught.exception.category, caught.exception.reason), (stage, "validation", reason))
+
+    def test_base_download_and_parse_failures_retain_substage(self):
+        manifest, config, compressed = self.base_fixture()
+        for index, stage in enumerate(("base-manifest", "base-config", "base-layer-download")):
+            values = [prep.canonical(manifest), prep.canonical(config), compressed]
+            values[index] = prep.ValidationFailure("download-identity")
+            with self.subTest(stage=stage), mock.patch.object(prep, "download", side_effect=values):
+                with self.assertRaises(prep.PreparationFailure) as caught:
+                    with prep.diagnostic_stage("base-image"):
+                        prep.base_tree()
+                self.assertEqual((caught.exception.stage, caught.exception.reason), (stage, "download-identity"))
+        for values, stage in [
+            ([b'{"x":1,"x":2}'], "base-manifest"),
+            ([prep.canonical(manifest), b'{"x":1,"x":2}'], "base-config"),
+        ]:
+            with mock.patch.object(prep, "download", side_effect=values), self.assertRaises(prep.PreparationFailure) as caught:
+                prep.base_tree()
+            self.assertEqual((caught.exception.stage, caught.exception.reason), (stage, "json-duplicate-key"))
+        with self.assertRaises(prep.PreparationFailure) as caught:
+            self.run_base(manifest, config, b"not gzip")
+        self.assertEqual(caught.exception.stage, "base-layer-decompress")
+
+    def test_base_import_preserves_fail_closed_invariant_codes(self):
+        directory = ("owned", 0o555, tarfile.DIRTYPE, "")
+        cases = [
+            ([directory, directory], "layer-duplicate-or-limit"),
+            ([("../escape", 0o444, tarfile.REGTYPE, "")], "path-unsafe"),
+            ([("privileged", 0o4755, tarfile.REGTYPE, "")], "layer-privileged"),
+            ([(".wh.deleted", 0o444, tarfile.REGTYPE, "")], "layer-whiteout"),
+            ([("device", 0o444, tarfile.CHRTYPE, "")], "layer-special-entry"),
+            ([("link", 0o777, tarfile.SYMTYPE, "../../escape")], "path-unsafe"),
+            ([("file", 0o444, tarfile.REGTYPE, ""), ("file/child", 0o444, tarfile.REGTYPE, "")], "layer-ancestor"),
+        ]
+        for members, reason in cases:
+            with self.subTest(reason=reason), self.assertRaises(prep.PreparationFailure) as caught:
+                self.run_base(*self.base_fixture(members))
+            self.assertEqual((caught.exception.stage, caught.exception.category, caught.exception.reason), ("base-layer-import", "validation", reason))
+
+    def test_reason_codes_are_revalidated_and_never_expose_input(self):
+        secret = "secret\n::error::injected https://user:password@private.test"
+        for reason in sorted(prep.REASONS):
+            def fail():
+                with prep.diagnostic_stage("base-image"):
+                    with prep.diagnostic_stage("base-layer-import"):
+                        raise prep.ValidationFailure(reason)
+            output = io.StringIO()
+            with mock.patch.object(prep, "prepare", side_effect=fail), mock.patch.object(prep.os.sys, "stderr", output):
+                self.assertEqual(prep.main(), 1)
+            self.assertEqual(output.getvalue(), "owned lint preparation failed; stage=base-layer-import; category=validation; reason=" + reason + "; no runtime admission or ESLint execution\n")
+        invalid = prep.PreparationFailure("base-layer-import", "validation", secret)
+        invalid.reason = secret
+        with mock.patch.object(prep, "prepare", side_effect=invalid), mock.patch.object(prep.os.sys, "stderr", io.StringIO()) as output:
+            self.assertEqual(prep.main(), 1)
+        self.assertNotIn(secret, output.getvalue())
+        self.assertNotIn("reason=", output.getvalue())
+        self.assertIsNone(prep.ValidationFailure(secret).reason)
+
     def test_stage_failures_are_bounded_and_do_not_expose_error_text(self):
         secret = "https://user:secret@private.test/path\n::error::injected /private/file"
         for stage in sorted(prep.STAGES):

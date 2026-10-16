@@ -65,6 +65,17 @@ download/extraction, the owned manifest, npm setup/lock/install, base import,
 rootfs assembly, image validation and artifact writing. Nested npm failures retain
 their phase rather than being relabeled as setup failures.
 
+Base import has nested stages for manifest/config retrieval and parsing, platform,
+layer descriptors, compressed download, decompression, diff ID verification and
+in-memory import. Known invariant failures add a fixed allowlisted `reason`, such
+as `stage=base-layer-import; category=validation; reason=layer-ancestor`.
+Reasons distinguish digest/size identity, unsupported layer media type, layer count,
+diff IDs, duplicate JSON keys and rejected archive paths, links, privileges,
+whiteouts, special entries, type replacements and resource bounds. Unknown failures
+still report only stage/category; a missing reason does not imply acceptance.
+No layer index, archive member name or external error text is logged. Existing
+digest pins, bounds, origin restrictions and fail-closed import checks are unchanged.
+
 Stage and category values come from fixed allowlists, never exception messages,
 URLs, filesystem paths, subprocess arguments or package output. Categories identify
 HTTP, network, timeout, filesystem, archive, validation, failed npm exit or denied
