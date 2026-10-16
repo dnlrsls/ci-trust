@@ -1,13 +1,16 @@
 # Offline lint sensitivity preparation (#9)
 
-**Status: pure classifier and owned fixture data only. No ESLint adapter, pinned
-runtime image, public `verify` command, or real sensitivity evidence is shipped
-by this unit. #8 real-isolation acceptance and #9 acceptance remain open.**
+**Status: pure classifier, owned fixture data, inert ESLint invocation descriptor
+and bounded JSON normalizer only. No process executor, pinned runtime image,
+public `verify` command, or real sensitivity evidence is shipped by this unit.
+#9 acceptance remains open. The separately recorded [bounded #8 acceptance](https://github.com/dnlrsls/ci-trust/issues/8#issuecomment-6206909812)
+does not authorize ESLint execution.**
 
 `internal/lintsensitivity` has no filesystem reads, subprocesses, network,
-configuration loading, consent creation, or runner connection. Its embedded
-JavaScript is data, not executed code. It accepts only normalized, supplied
-observations. A caller can fabricate them: classification is not authentication.
+configuration loading, consent creation, or runner connection. Its JavaScript is
+data, not executed code. Both raw captures and normalized observations are
+caller-supplied. A caller can fabricate them: parsing and classification are not
+authentication.
 
 ## Owned fixture contract
 
@@ -30,6 +33,54 @@ The rule's intended behavior is documented by
 [ESLint's exit contract](https://eslint.org/docs/latest/use/command-line-interface#exit-codes)
 distinguishes lint findings from configuration/internal errors. These sources
 inform authored expectations; they are not receipts from running the fixtures.
+
+## Inert ESLint adapter contract
+
+`OwnedESLintInvocation` returns fresh arguments, owned stdin fixture bytes and
+one fixed flat-config module. It accepts only the three existing roles, no
+caller-selected paths, flags, source, config or plugins. It has no executable,
+process creation, image preparation, runtime admission or approval operation.
+The proposed isolated paths are `/owned/eslint.config.mjs` and `/work/fixture.js`;
+these are not host paths. No files are written by this package.
+
+The descriptor selects `--no-config-lookup`, `--no-ignore`, explicit owned config,
+the built-in JSON formatter, and stdin with the fixed virtual filename. The
+config imports nothing, enables only `no-debugger`, fixes ECMAScript 2022/module
+parsing, disables inline configuration and unused-disable reporting. This is
+owned executable configuration data for a future reviewed image, never a loader
+for target-repository configuration. Its exact bytes and SHA-256 are returned.
+`Identity.ConfigSHA256` still binds the existing JSON recipe; future trusted
+plans must **also** bind the effective module digest, arguments and parser
+revision. This descriptor does not supply that trusted binding.
+
+`DecodeESLint` normalizes supplied `ESLintCapture` bytes into the existing
+`Observation`. `Completed` is a **caller assertion** that trusted execution,
+consent, cleanup and source preservation succeeded. Known failure statuses stay
+failures; unknown statuses become `INVALID_OUTPUT`. Invalid identities or roles
+also fail closed. No capture can itself authenticate identity or chronology.
+
+The deliberately narrow, candidate formatter profile requires:
+
+- At most 64 KiB combined stdout/stderr, empty stderr, valid UTF-8, one JSON
+  document, depth at most eight, no nulls or duplicate decoded object keys.
+- Exactly one result at `/work/fixture.js`, core diagnostic fields and all counters
+  required, exact case-sensitive keys, integer counters matching diagnostics,
+  and exit 0/1 consistent with the error count.
+- At most sixteen messages with rule, severity, prose and positive location;
+  optional paired end locations must not precede their starts. Only normalized
+  rule/severity/location/fatal fields are retained, not arbitrary raw prose.
+- Empty suppressed messages, zero fixable counts, no transformed output or
+  unknown fields. Optional deprecation metadata must be empty; optional source
+  must equal the owned fixture bytes. Missing/unknown output fails closed.
+
+Valid wrong-rule, warning or extra-diagnostic output still goes to `Classify`,
+which cannot call it sensitive. Malformed or inconsistent output becomes
+`INVALID_OUTPUT` without partial diagnostics. Real-tool compatibility has not
+been demonstrated: an exact tool/runtime/dependency/image pin and captured
+formatter compatibility tests remain prerequisites for execution admission.
+The [formatter reference](https://eslint.org/docs/latest/use/formatters/) and
+[CLI reference](https://eslint.org/docs/latest/use/command-line-interface) inform
+this candidate contract, not a guarantee for an unselected ESLint release.
 
 ## Classification boundary
 
@@ -68,8 +119,8 @@ retain diagnostic/fixture support and limitations, then validate the whole
 report. UNVERIFIABLE must not become efficacy PRESENT/ABSENT. Schema acceptance
 alone does not establish diagnostic matching, isolation, chronology or truth.
 
-Before runtime integration: finish/review #8's real proof; review exact pins and
-the bounded structured-output parser; add a trusted allowlisted adapter without
+Before runtime integration: retain #8's bounded acceptance; review exact pins and
+the bounded structured-output parser; complete a trusted allowlisted adapter without
 repository config discovery; authenticate exact-plan human consent; prove
 no-start on denied/stale consent and source immutability; implement public
 CLI/help/report mapping; and run the real pinned tool only under a separately
@@ -81,3 +132,7 @@ or treat these synthetic unit observations as controlled execution evidence.
 Run `go test ./internal/lintsensitivity` for authored positive/negative
 classification, fixture bytes, and input immutability. These Go tests never
 launch Node, ESLint or Docker, and do not establish real validator sensitivity.
+Adapter tests use independently authored formatter-shaped JSON, including
+malformed, duplicate, oversized, identity, counter, source and diagnostic cases.
+Fuzz seeds exercise only the Go normalizer. No formatter output in these tests
+is a receipt from ESLint execution.
