@@ -1,10 +1,12 @@
 # Review one owned Docker execution route
 
 The internal `controlled-verify` command now connects the pinned owned archive,
-exact human review and existing runner. **No real Docker proof has been run.**
+exact human review and existing runner. The first separately human-approved
+execution is documented in the [bounded evidence review](real-isolation-evidence.md).
 The owned-image workflow now has an explicit, default-off execution mode behind
 the existing protected Environment and the command's independent exact-plan audit.
-It has not been dispatched. Independent static source review and a bounded
+Run `38838143461` completed on the exact revision recorded in that review.
+Independent static source review and a bounded
 recheck of its two corrected findings accepted the candidate for a source PR,
 not real-runtime acceptance. Default preparation still cannot execute containers.
 
@@ -124,15 +126,21 @@ not a claim that the main process died. Legacy `owned-v1` still rejects OOM. Onl
 `owned-proof-v1` can accept the deliberately tested child event, and only with a
 successful attachment, main-process exit zero and a complete bounded owned report
 with all twelve observations and increasing resource counters. Parent death,
-missing/failed/ambiguous evidence and transport failure remain fail-closed. Actual
-victim selection and parent survival still need the authorized real run.
+missing/failed/ambiguous evidence and transport failure remain fail-closed.
+The first record reports parent survival after an OOM event; future kernel victim
+selection and parent survival are not guaranteed by that observation.
 
 Review the owned tool's per-check JSON separately, retaining its limitations and
 `OBSERVED` / `INFERRED` / `UNVERIFIABLE` distinctions. A normal exit code alone
 proves neither isolation nor validator efficacy. Tests use inert archives,
 owned fake executables and mocked API/runtime boundaries, not real isolation.
 
-## Still required before the first real proof
+## First-run prerequisites and acceptance
+
+The following checklist describes the prerequisites used for the first run,
+not permission to repeat it. The [evidence review](real-isolation-evidence.md)
+maps that run and separate negative-path regression tests to issue #8.
+Publication and maintainer acceptance remain explicit decisions.
 
 - Bind the statically reviewed source and reproducible pinned image candidate to
   the exact committed/published revision; source-PR readiness is not runtime approval.

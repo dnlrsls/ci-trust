@@ -1,11 +1,14 @@
 # Controlled-fixture runner: bounded local Docker backend
 
-**Status: internal owned execution route implemented; S8 real-isolation acceptance
-remains OPEN.** The [owned execution route](owned-execution-route.md) connects one
+**Status: the first owned Linux execution has a reviewed bounded evidence record;
+maintainer acceptance remains separate.** See the
+[execution evidence and acceptance mapping](real-isolation-evidence.md).
+The [owned execution route](owned-execution-route.md) connects one
 pinned image candidate, exact-plan human authentication, bounded image loading
-and the runner through a default-off protected workflow. No real Docker commands,
-containers or image operations have been run for this change. Source review,
-fake tests and preparation are not isolation evidence or execution consent.
+and the runner through a default-off protected workflow. Run `38838143461`
+records the separately human-approved real execution on Ubuntu 24.04.
+Source review, fake tests and preparation alone are not isolation evidence or
+execution consent; this run does not authorize another execution.
 The [image archive preparation](owned-image.md) and
 [preparation binding](controlled-plan.md) retain their non-executing default mode.
 
