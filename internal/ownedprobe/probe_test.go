@@ -16,7 +16,7 @@ const status = "Uid:\t65534\t65534\t65534\t65534\nCapInh:\t0000000000000000\nCap
 const marker = "ci-trust owned-smoke-v1 root marker\n"
 const changedMarker = "ci-trust owned-smoke-v1 root marker write check\n"
 const scratch = "/tmp/ci-trust-owned-smoke-v1"
-const help = "Usage: owned-smoke --fixture=smoke-v1 --config=owned-v1\nOwned-fixture-only partial observations; not isolation proof.\n"
+const help = "Usage: owned-smoke --fixture=smoke-v1 --config=owned-v1\nOwned-fixture-only partial observations; not isolation proof.\nOpt-in: --fixture=smoke-v1 --config=owned-proof-v1 (bounded observations; unavailable controls fail closed).\n"
 const success = "owned-smoke: partial owned-fixture-only\nobserved: uid65534 caps0 no-new-privileges seccomp-filter root-marker-erofs scratch-write-cleanup cgroup-v2-profile\nnot-proven: resource-enforcement network credentials wall-time output-limit full-isolation\n"
 
 var args = []string{"--fixture=smoke-v1", "--config=owned-v1"}
@@ -45,7 +45,7 @@ func fresh() *fake {
 		files: map[string]string{
 			"/proc/self/status":              status,
 			"/proc/self/cgroup":              "0::/\n",
-			"/proc/self/mounts":                   "tmpfs /tmp tmpfs rw,nosuid,nodev,noexec,size=8192k 0 0\n",
+			"/proc/self/mounts":              "tmpfs /tmp tmpfs rw,nosuid,nodev,noexec,size=8192k 0 0\n",
 			"/sys/fs/cgroup/cpu.max":         "100000 100000\n",
 			"/sys/fs/cgroup/memory.max":      "134217728\n",
 			"/sys/fs/cgroup/memory.swap.max": "0\n",
