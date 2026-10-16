@@ -9,3 +9,6 @@
 # Conditional workflow/diff goldens are compared byte-for-byte.
 /internal/bootstrap/testdata/** text eol=lf
 /tools/owned-smoke/root-marker text eol=lf
+
+# Owned lint fixture digests must be identical on every host.
+/internal/lintsensitivity/testdata/** text eol=lf
