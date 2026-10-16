@@ -42,6 +42,155 @@ func nodeTar(t *testing.T, headers ...*tar.Header) []byte {
 func nodeHeader(name string, kind byte) *tar.Header {
 	return &tar.Header{Name: nodeBundlePrefix + "/" + name, Typeflag: kind, Mode: 0755}
 }
+
+// Synthetic full-flow seam: these pins are not preimages of NodeSHA256.
+func decodeSyntheticNode(t *testing.T, headers ...*tar.Header) (*NodeBundle, error) {
+	t.Helper()
+	compressed := nodeGzip(t, nodeTar(t, headers...))
+	original := bytes.Clone(compressed)
+	raw, err := ingestNodeBundleWith(context.Background(), compressed, Digest(compressed), nodeIngestLimits{1 << 16, 1 << 16, 100})
+	if err != nil {
+		return nil, err
+	}
+	bundle, err := validateNodeGraph(context.Background(), raw)
+	if !bytes.Equal(compressed, original) {
+		t.Fatal("compressed input mutated")
+	}
+	return bundle, err
+}
+func TestNodeGraph(t *testing.T) {
+	link := func(name, target string, kind byte) *tar.Header {
+		h := nodeHeader(name, kind)
+		h.Linkname = target
+		return h
+	}
+	file := nodeHeader("bin/node", tar.TypeReg)
+	file.Size = 3
+	file.Mode = 06711
+	js := nodeHeader("lib/npm/cli.js", tar.TypeReg)
+	js.Size = 2
+	js.Mode = 0601
+	license := nodeHeader("LICENSE", tar.TypeCont)
+	license.Size = 1
+	license.Mode = 0644
+	t.Run("forward links implicit parents dangling and alias", func(t *testing.T) {
+		bundle, err := decodeSyntheticNode(t,
+			link("bin/npm", "../lib/npm/cli.js", tar.TypeSymlink),
+			link("copy", nodeBundlePrefix+"/forward", tar.TypeLink),
+			link("forward", file.Name, tar.TypeLink),
+			link("dangling", "missing/leaf", tar.TypeSymlink),
+			link("alias", "lib/npm", tar.TypeSymlink),
+			nodeHeader("alias/extra", tar.TypeReg), file, js, license)
+		if err != nil || bundle == nil || !bundle.sealed {
+			t.Fatalf("bundle %v error %v", bundle, err)
+		}
+		entries := map[string]nodeBundleEntry{}
+		for _, e := range bundle.entries {
+			entries[e.name] = e
+		}
+		for _, name := range []string{"bin/node", "copy", "forward"} {
+			e := entries[nodeBundlePrefix+"/"+name]
+			if e.kind != tar.TypeReg || string(e.data) != "xxx" || !e.ownerExecutable {
+				t.Fatalf("file %s: %+v", name, e)
+			}
+		}
+		if entries[nodeBundlePrefix+"/LICENSE"].ownerExecutable || entries[nodeBundlePrefix+"/lib/npm/cli.js"].ownerExecutable {
+			t.Fatal("non-owner execute retained")
+		}
+		if entries[nodeBundlePrefix+"/bin/npm"].target != "../lib/npm/cli.js" || entries[nodeBundlePrefix+"/dangling"].target != "missing/leaf" {
+			t.Fatal("link text lost")
+		}
+		if entries[nodeBundlePrefix+"/lib/npm/extra"].kind != tar.TypeReg || entries[nodeBundlePrefix+"/bin"].kind != tar.TypeDir {
+			t.Fatal("alias or implicit parent missing")
+		}
+	})
+	t.Run("finite repeated alias traversal", func(t *testing.T) {
+		bundle, err := decodeSyntheticNode(t, nodeHeader("dir", tar.TypeDir), link("a", "dir", tar.TypeSymlink), link("dir/back", "../a", tar.TypeSymlink), link("finite", "a/back/back/missing", tar.TypeSymlink))
+		if err != nil || bundle == nil || !bundle.sealed {
+			t.Fatalf("safe finite path rejected: %v", err)
+		}
+	})
+	t.Run("prefix must be directory", func(t *testing.T) {
+		h := nodeHeader("", tar.TypeReg)
+		h.Name = nodeBundlePrefix
+		bundle, err := decodeSyntheticNode(t, h)
+		if bundle != nil || Diagnostic(err) != Diagnostic(NewPreparationFailure("node-extract", "validation", "layer-ancestor")) {
+			t.Fatalf("non-directory root accepted: %v %v", bundle, err)
+		}
+	})
+	t.Run("wrong public pin and zero authority", func(t *testing.T) {
+		compressed := nodeGzip(t, nodeTar(t, file))
+		b, err := DecodeNodeBundle(context.Background(), compressed)
+		if b != nil || Diagnostic(err) != Diagnostic(NewPreparationFailure("node-extract", "validation", "download-identity")) {
+			t.Fatalf("%v %v", b, err)
+		}
+		if (NodeBundle{}).sealed {
+			t.Fatal("zero value authorized")
+		}
+	})
+	cases := map[string]struct {
+		headers []*tar.Header
+		reason  string
+	}{}
+	for label, target := range map[string]string{"absolute": "/etc/passwd", "drive": "C:/node", "backslash": "..\\node", "escape": "../other/node", "lookalike": "../" + nodeBundlePrefix + "-other/node", "empty": "", "control": "bad\x7f"} {
+		cases[label] = struct {
+			headers []*tar.Header
+			reason  string
+		}{[]*tar.Header{file, link("bad", target, tar.TypeSymlink)}, "link-invalid"}
+	}
+	cases["hard absolute"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{link("bad", "/"+file.Name, tar.TypeLink)}, "link-invalid"}
+	cases["self cycle"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{link("a", "a", tar.TypeSymlink)}, "link-cycle"}
+	cases["multi cycle"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{link("a", "b", tar.TypeSymlink), link("b", "a", tar.TypeSymlink)}, "link-cycle"}
+	cases["hard cycle"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{link("a", nodeBundlePrefix+"/b", tar.TypeLink), link("b", nodeBundlePrefix+"/a", tar.TypeLink)}, "link-cycle"}
+	cases["file ancestor"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{file, nodeHeader("bin/node/child", tar.TypeReg)}, "layer-ancestor"}
+	cases["hard directory"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{nodeHeader("dir", tar.TypeDir), link("bad", nodeBundlePrefix+"/dir", tar.TypeLink)}, "layer-hardlink"}
+	cases["hard missing"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{link("bad", nodeBundlePrefix+"/missing", tar.TypeLink)}, "layer-hardlink"}
+	cases["alias conflict"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{link("alias", "lib", tar.TypeSymlink), nodeHeader("alias/a", tar.TypeReg), nodeHeader("lib/a", tar.TypeDir)}, "layer-type-replacement"}
+	cases["link then dotdot"] = struct {
+		headers []*tar.Header
+		reason  string
+	}{[]*tar.Header{file, link("bad", "bin/node/../LICENSE", tar.TypeSymlink)}, "layer-ancestor"}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			bundle, err := decodeSyntheticNode(t, tc.headers...)
+			if bundle != nil || err == nil || Diagnostic(err) != Diagnostic(NewPreparationFailure("node-extract", "validation", tc.reason)) {
+				t.Fatalf("bundle=%v error=%v diagnostic=%s", bundle, err, Diagnostic(err))
+			}
+		})
+	}
+	t.Run("cancelled graph", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if b, err := validateNodeGraph(ctx, nil); b != nil || err == nil || err.Error() != "node-extract:network" {
+			t.Fatalf("%v %v", b, err)
+		}
+	})
+}
+
 func TestNodeIngest(t *testing.T) {
 	limits := nodeIngestLimits{1 << 16, 1 << 16, 20}
 	decode := func(data []byte, cap nodeIngestLimits) ([]rawNodeRecord, error) {

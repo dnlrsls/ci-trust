@@ -5,11 +5,260 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"path"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const nodeBundlePrefix = "node-v" + NodeVersion + "-linux-x64"
+
+// NodeBundle is opaque preparation data, never filesystem authority by default.
+// T4C2 must require sealed; zero values and nil pointers are not validated.
+type NodeBundle struct {
+	entries []nodeBundleEntry
+	sealed  bool
+}
+type nodeBundleEntry struct {
+	name            string
+	kind            byte // directory, regular file, or symlink; hardlinks become file bytes
+	data            []byte
+	target          string
+	ownerExecutable bool
+}
+
+// DecodeNodeBundle accepts only the fixed compressed Node artifact.
+func DecodeNodeBundle(ctx context.Context, compressed []byte) (*NodeBundle, error) {
+	raw, err := ingestNodeBundle(ctx, compressed)
+	if err != nil {
+		return nil, err
+	}
+	return validateNodeGraph(ctx, raw)
+}
+func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, error) {
+	fail := func(reason string) (*NodeBundle, error) { return nil, nodeGraphFailure(reason) }
+	index := map[string]rawNodeRecord{}
+	names := make([]string, len(raw))
+	for i, r := range raw {
+		if err := baseContextFailure(ctx, "node-extract"); err != nil {
+			return nil, err
+		}
+		if r.name == nodeBundlePrefix && r.kind != tar.TypeDir {
+			return fail("layer-ancestor")
+		}
+		if r.kind == tar.TypeSymlink || r.kind == tar.TypeLink {
+			if !nodeHostTarget(r.target) {
+				return fail("link-invalid")
+			}
+		}
+		index[r.name] = r
+		names[i] = r.name
+	}
+	// Relocate entries beneath symlink aliases to their physical destination.
+	// Rebuild until stable so forward/nested aliases are order-independent. Each
+	// pass resolves against the previous complete index, never the host filesystem.
+	stable := false
+	for pass := 0; pass <= len(raw); pass++ {
+		next := map[string]rawNodeRecord{}
+		changed := false
+		for i, r := range raw {
+			if err := baseContextFailure(ctx, "node-extract"); err != nil {
+				return nil, err
+			}
+			parent, err := nodeGraphResolve(ctx, index, path.Dir(r.name))
+			if r.name == nodeBundlePrefix {
+				parent = "."
+				err = nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			if p, ok := index[parent]; ok && p.kind != tar.TypeDir {
+				return fail("layer-ancestor")
+			}
+			name := path.Join(parent, path.Base(r.name))
+			if _, err := SafePath(name); err != nil {
+				return fail("link-invalid")
+			}
+			if old, ok := next[name]; ok && (old.kind != tar.TypeDir || r.kind != tar.TypeDir) {
+				return fail("layer-type-replacement")
+			}
+			changed = changed || names[i] != name
+			names[i] = name
+			r.name = name
+			next[name] = r
+		}
+		index = next
+		if !changed {
+			stable = true
+			break
+		}
+	}
+	if !stable {
+		return fail("link-cycle")
+	}
+	if err := baseContextFailure(ctx, "node-extract"); err != nil {
+		return nil, err
+	}
+	entries := map[string]nodeBundleEntry{}
+	var total int64
+	for name, r := range index {
+		if err := baseContextFailure(ctx, "node-extract"); err != nil {
+			return nil, err
+		}
+		entry := nodeBundleEntry{name: name, kind: r.kind, data: r.data, target: r.target, ownerExecutable: r.ownerExecutable}
+		if r.kind == tar.TypeSymlink || r.kind == tar.TypeLink {
+			resolved, err := nodeGraphResolve(ctx, index, name)
+			if err != nil {
+				return nil, err
+			}
+			if r.kind == tar.TypeLink {
+				target, ok := index[resolved]
+				if !ok || (target.kind != tar.TypeReg && target.kind != tar.TypeRegA && target.kind != tar.TypeCont) {
+					return fail("layer-hardlink")
+				}
+				entry.data = target.data
+				entry.ownerExecutable = target.ownerExecutable
+				entry.target = ""
+				entry.kind = tar.TypeReg
+			}
+		}
+		if entry.kind == tar.TypeRegA || entry.kind == tar.TypeCont {
+			entry.kind = tar.TypeReg
+		}
+		if entry.kind == tar.TypeReg {
+			total += int64(len(entry.data))
+		} else {
+			entry.ownerExecutable = false
+		}
+		// Ownership, privilege bits, xattrs and timestamps are deliberately not
+		// materialization metadata (matching data_filter's ownership policy).
+		// Effective path/linkpath/size were already applied by archive/tar.
+		if total > MaxBytes {
+			return fail("rootfs-limit")
+		}
+		entries[name] = entry
+	}
+	// Missing parents are ordinary implicit directories, not dangling-link errors.
+	for name := range index {
+		if err := baseContextFailure(ctx, "node-extract"); err != nil {
+			return nil, err
+		}
+		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			if existing, ok := entries[parent]; ok && existing.kind != tar.TypeDir {
+				return fail("layer-ancestor")
+			}
+			entries[parent] = nodeBundleEntry{name: parent, kind: tar.TypeDir}
+			if len(entries) > MaxFiles {
+				return fail("rootfs-limit")
+			}
+		}
+	}
+	if len(entries) == 0 || len(entries) > MaxFiles {
+		return fail("rootfs-limit")
+	}
+	ordered := make([]string, 0, len(entries))
+	for name := range entries {
+		ordered = append(ordered, name)
+	}
+	sort.Strings(ordered)
+	bundle := &NodeBundle{}
+	for _, name := range ordered {
+		bundle.entries = append(bundle.entries, entries[name])
+	}
+	if err := baseContextFailure(ctx, "node-extract"); err != nil {
+		return nil, err
+	}
+	bundle.sealed = true
+	return bundle, nil
+}
+
+func nodeGraphFailure(reason string) error {
+	return NewPreparationFailure("node-extract", "validation", reason)
+}
+func nodeHostTarget(target string) bool {
+	if target == "" || strings.HasPrefix(target, "/") || strings.ContainsAny(target, "\\\\:") || !utf8.ValidString(target) {
+		return false
+	}
+	for _, r := range target {
+		if r < 32 || r == 127 {
+			return false
+		}
+	}
+	return true
+}
+
+// Walk components BEFORE processing '..': lexical Clean before following a
+// symlink would incorrectly accept paths such as file/../escape. Hardlinks are
+// archive-root-relative; symlinks are relative to their physical parent.
+func nodeGraphResolve(ctx context.Context, index map[string]rawNodeRecord, name string) (string, error) {
+	todo := strings.Split(name, "/")
+	stack := []string{}
+	followed := map[string]bool{}
+	for len(todo) > 0 {
+		if err := baseContextFailure(ctx, "node-extract"); err != nil {
+			return "", err
+		}
+		part := todo[0]
+		todo = todo[1:]
+		// End-of-expansion markers distinguish a real cycle from repeated but
+		// finite traversal of the same directory alias in the remaining suffix.
+		if strings.HasPrefix(part, "\x00") {
+			delete(followed, part[1:])
+			continue
+		}
+		remaining := false
+		for _, p := range todo {
+			if !strings.HasPrefix(p, "\x00") {
+				remaining = true
+				break
+			}
+		}
+		if part == "" || part == "." {
+			continue
+		}
+		if part == ".." {
+			if len(stack) <= 1 {
+				return "", nodeGraphFailure("link-invalid")
+			}
+			stack = stack[:len(stack)-1]
+			continue
+		}
+		stack = append(stack, part)
+		if stack[0] != nodeBundlePrefix {
+			return "", nodeGraphFailure("link-invalid")
+		}
+		current := strings.Join(stack, "/")
+		r, ok := index[current]
+		if !ok {
+			continue
+		} // confined dangling symlinks are allowed by data_filter
+		if r.kind == tar.TypeSymlink || r.kind == tar.TypeLink {
+			if followed[current] {
+				return "", nodeGraphFailure("link-cycle")
+			}
+			followed[current] = true
+			if r.kind == tar.TypeLink {
+				if remaining {
+					return "", nodeGraphFailure("layer-ancestor")
+				}
+				stack = nil
+			} else {
+				stack = stack[:len(stack)-1]
+			}
+			expansion := append(strings.Split(r.target, "/"), "\x00"+current)
+			todo = append(expansion, todo...)
+		} else if r.kind != tar.TypeDir && remaining {
+			return "", nodeGraphFailure("layer-ancestor")
+		}
+	}
+	result, err := SafePath(strings.Join(stack, "/"))
+	if err != nil {
+		return "", nodeGraphFailure("link-invalid")
+	}
+	return result, nil
+}
 
 // rawNodeRecord is NOT safe to materialize: links and ancestors remain unchecked.
 // kind retains TAR types (including contiguous regular files). No ownership or
