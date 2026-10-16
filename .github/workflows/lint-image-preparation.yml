@@ -1,0 +1,87 @@
+name: Lint image candidate preparation - NEVER ESLint execution
+
+'on':
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+  GOTELEMETRY: 'off'
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  prepare:
+    name: Prepare unadmitted dependency and image artifacts only
+    if: >-
+      github.repository == 'dnlrsls/ci-trust' &&
+      github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: ci-trust-controlled-verification
+      url: https://github.com/dnlrsls/ci-trust/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Check out exact protected source without retained credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up fixed compiler without shared caches
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Test only offline preparation parsing and packing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B -m unittest discover -s tools/lint-preparation -p test_prepare.py
+      - name: Compile owned launcher and emit owned configuration data - no JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          prep="$GITHUB_WORKSPACE/.git/lint-image-preparation"
+          mkdir -p "$prep/tmp" "$prep/cache"
+          export GOCACHE="$prep/cache" TEMP="$prep/tmp" TMP="$prep/tmp" TMPDIR="$prep/tmp"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags=-buildid= -o "$prep/owned-eslint" ./internal/lintlauncher/cmd/owned-eslint
+          go run ./internal/lintpreparation/cmd/owned-lint-inputs > "$prep/inputs.json"
+      - name: Resolve disabled-script dependencies and serialize image data - no Docker or ESLint
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          timeout --signal=TERM --kill-after=10s 600s python3 -I -B tools/lint-preparation/prepare.py
+          test -z "$(git status --porcelain --untracked-files=all)"
+          prep="$GITHUB_WORKSPACE/.git/lint-image-preparation/artifacts"
+          {
+            printf '## Preparation candidate only - NOT admitted, NOT isolation proof\n\n'
+            printf 'Pinned Node/npm ran only for dependency preparation with scripts disabled. ESLint and the owned launcher were never executed; no Docker daemon was accessed.\n\n'
+            printf 'Node security hold remains active. ELF library compatibility and independent offline reconstruction are not established.\n\n'
+            printf 'Review metadata, complete dependency lock and filesystem inventory. No catalog entry or execution consent is created.\n\n'
+            printf 'Artifact checksums (retained seven days):\n```text\n'
+            cat "$prep/SHA256SUMS"
+            printf '\n```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload only fixed owned preparation artifacts - no caches or credentials
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lint-preparation-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .git/lint-image-preparation/artifacts/image.tar
+            .git/lint-image-preparation/artifacts/package.json
+            .git/lint-image-preparation/artifacts/package-lock.json
+            .git/lint-image-preparation/artifacts/inventory.json
+            .git/lint-image-preparation/artifacts/owned-inputs.json
+            .git/lint-image-preparation/artifacts/preparation.json
+            .git/lint-image-preparation/artifacts/SHA256SUMS
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
