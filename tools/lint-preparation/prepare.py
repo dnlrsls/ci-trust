@@ -5,6 +5,7 @@ The generated image remains unadmitted and on the documented Node security hold.
 """
 
 import base64
+from contextlib import contextmanager
 import hashlib
 import http.server
 import io
@@ -20,6 +21,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -32,6 +34,63 @@ BASE_MANIFEST = "sha256:777e96cf322c46bc32aca926c263624c4dc8d7cf37e2fa65ba2c7e69
 MAX_BYTES = 512 << 20
 MAX_FILES = 50000
 SHA = re.compile(r"sha256:[a-f0-9]{64}\Z")
+
+# Only owned vocabulary may reach hosted logs. Never stringify caught errors.
+STAGES = frozenset({"host-inputs", "node-download", "node-extract", "owned-manifest",
+                    "npm-setup", "npm-lock", "npm-ci", "base-image", "rootfs",
+                    "image-validation", "artifact-write"})
+CATEGORIES = frozenset({"http", "network", "timeout", "filesystem", "archive",
+                        "validation", "process-failed", "origin-denied", "unexpected"})
+
+
+class PreparationFailure(Exception):
+    def __init__(self, stage, category):
+        self.stage = stage if stage in STAGES else "unknown"
+        self.category = category if category in CATEGORIES else "unexpected"
+        super().__init__(self.stage + ":" + self.category)
+
+
+def error_category(error):
+    # HTTPError/URLError must precede OSError; TimeoutExpired can contain argv.
+    if isinstance(error, urllib.error.HTTPError):
+        return "http"
+    if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+        return "timeout"
+    if isinstance(error, urllib.error.URLError):
+        return "network"
+    if isinstance(error, tarfile.TarError):
+        return "archive"
+    if isinstance(error, OSError):
+        return "filesystem"
+    if isinstance(error, (ValueError, KeyError, TypeError)):
+        return "validation"
+    return "unexpected"
+
+
+@contextmanager
+def diagnostic_stage(name):
+    if name not in STAGES:
+        raise PreparationFailure("unknown", "unexpected")
+    try:
+        yield
+    except PreparationFailure:
+        raise
+    except Exception as error:
+        raise PreparationFailure(name, error_category(error)) from None
+
+
+def main():
+    try:
+        prepare()
+    except Exception as error:
+        # Revalidate even structured failures; no raw exception text or traceback.
+        if isinstance(error, PreparationFailure):
+            failure = PreparationFailure(error.stage, error.category)
+        else:
+            failure = PreparationFailure("unknown", error_category(error))
+        print("owned lint preparation failed; stage=" + failure.stage + "; category=" + failure.category + "; no runtime admission or ESLint execution", file=os.sys.stderr)
+        return 1
+    return 0
 
 
 def digest(data):
@@ -250,15 +309,18 @@ def npm_install(node_root, target, home):
     try:
         frozen_lock = None
         for command in (["install", "--package-lock-only"], ["ci"]):
-            # Node executes only the pinned npm CLI, never installed tool code.
-            completed = subprocess.run([node, npm] + command + common + ["--https-proxy=" + proxy_url, "--proxy=" + proxy_url], cwd=target, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=False)
-            if completed.returncode != 0 or server.denied:
-                raise ValueError("bounded dependency preparation failed")
-            lock_bytes = (target / "package-lock.json").read_bytes()
-            validate_lock(unique_json(lock_bytes))
-            if frozen_lock is not None and lock_bytes != frozen_lock:
-                raise ValueError("frozen install changed dependency lock")
-            frozen_lock = lock_bytes
+            with diagnostic_stage("npm-lock" if command[0] == "install" else "npm-ci"):
+                # Node executes only the pinned npm CLI, never installed tool code.
+                completed = subprocess.run([node, npm] + command + common + ["--https-proxy=" + proxy_url, "--proxy=" + proxy_url], cwd=target, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=False)
+                if server.denied:
+                    raise PreparationFailure("npm-lock" if command[0] == "install" else "npm-ci", "origin-denied")
+                if completed.returncode != 0:
+                    raise PreparationFailure("npm-lock" if command[0] == "install" else "npm-ci", "process-failed")
+                lock_bytes = (target / "package-lock.json").read_bytes()
+                validate_lock(unique_json(lock_bytes))
+                if frozen_lock is not None and lock_bytes != frozen_lock:
+                    raise ValueError("frozen install changed dependency lock")
+                frozen_lock = lock_bytes
     finally:
         server.shutdown()
         server.server_close()
@@ -337,87 +399,92 @@ def inspect_archive(archive, expected_inventory, identities):
 
 
 def prepare():
-    if os.uname().sysname != "Linux" or os.uname().machine != "x86_64":
-        raise ValueError("hosted Linux amd64 preparation required")
-    workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
-    prep = workspace / ".git/lint-image-preparation"
-    artifacts = prep / "artifacts"
-    artifacts.mkdir(mode=0o700)
-    inputs = unique_json((prep / "inputs.json").read_bytes())
-    if hashlib.sha256(inputs["Module"].encode()).hexdigest() != inputs["ModuleSHA256"]:
-        raise ValueError("owned module mismatch")
-    source = workspace / "tools/lint-preparation"
+    with diagnostic_stage("host-inputs"):
+        if os.uname().sysname != "Linux" or os.uname().machine != "x86_64":
+            raise ValueError("hosted Linux amd64 preparation required")
+        workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+        prep = workspace / ".git/lint-image-preparation"
+        artifacts = prep / "artifacts"
+        artifacts.mkdir(mode=0o700)
+        inputs = unique_json((prep / "inputs.json").read_bytes())
+        if hashlib.sha256(inputs["Module"].encode()).hexdigest() != inputs["ModuleSHA256"]:
+            raise ValueError("owned module mismatch")
+        source = workspace / "tools/lint-preparation"
     with tempfile.TemporaryDirectory(prefix="owned-lint-", dir=prep) as temp:
         temp = Path(temp)
-        node_archive = download("https://nodejs.org/dist/v" + NODE_VERSION + "/" + NODE_ARCHIVE, "sha256:" + NODE_SHA256)
+        with diagnostic_stage("node-download"):
+            node_archive = download("https://nodejs.org/dist/v" + NODE_VERSION + "/" + NODE_ARCHIVE, "sha256:" + NODE_SHA256)
         # Extraction is only for the verified preparation-time Node/npm bundle,
         # never OCI layers or installed package code. Python data filter confines
         # links; the reviewed digest is mandatory before this extraction.
-        with tarfile.open(fileobj=io.BytesIO(node_archive), mode="r:xz") as archive:
-            archive.extractall(temp, filter="data")
-        node_root = temp / ("node-v" + NODE_VERSION + "-linux-x64")
-        target, home = temp / "owned", temp / "home"
-        target.mkdir(); home.mkdir()
-        manifest_bytes = (source / "package.json").read_bytes()
-        manifest = unique_json(manifest_bytes)
-        if manifest != {"name": "ci-trust-owned-eslint-preparation", "version": "0.0.0", "private": True, "dependencies": {"eslint": "10.12.0"}}:
-            raise ValueError("unexpected owned manifest")
-        (target / "package.json").write_bytes(manifest_bytes)
-        flags = npm_install(node_root, target, home)
-        lock_bytes = (target / "package-lock.json").read_bytes()
-        tree, base_manifest = base_tree()
-        # Base is pinned and inventoried, not treated as an independently approved
-        # runtime. Reject known development executables instead of inheriting defaults.
-        for name in tree:
-            if posixpath.basename(name) in {"sh", "bash", "dash", "npm", "npx", "gcc", "cc", "python", "python3"}:
-                raise ValueError("unexpected base executable")
-        add_file(tree, "owned/node/bin/node", (node_root / "bin/node").read_bytes(), True)
-        add_file(tree, "owned/node/LICENSE", (node_root / "LICENSE").read_bytes())
-        add_file(tree, "ci-trust/owned-eslint", (prep / "owned-eslint").read_bytes(), True)
-        add_file(tree, "owned/eslint.config.mjs", inputs["Module"].encode())
-        tree["work"] = ("dir", 0o555, b"")
-        count, total = 0, 0
-        for directory, dirs, files in os.walk(target / "node_modules", followlinks=False):
-            for name in dirs + files:
-                path = Path(directory) / name
-                if path.is_symlink():
-                    raise ValueError("installed symlink requires review")
-            for name in files:
-                path = Path(directory) / name
-                count += 1; total += path.stat().st_size
-                if count > MAX_FILES or total > 128 << 20 or not path.is_file():
-                    raise ValueError("installed tree limit")
-                add_file(tree, "owned/" + path.relative_to(target).as_posix(), path.read_bytes())
-        records = inventory(tree)
-        image, identities = pack_image(tree)
-        inspect_archive(image, records, identities)
-        reproduced, repeated_ids = pack_image(tree)
-        if reproduced != image or repeated_ids != identities:
-            raise ValueError("nondeterministic archive serialization")
-        (artifacts / "image.tar").write_bytes(image)
-        (artifacts / "package.json").write_bytes(manifest_bytes)
-        (artifacts / "package-lock.json").write_bytes(lock_bytes)
-        (artifacts / "inventory.json").write_bytes(canonical(records) + b"\n")
-        (artifacts / "owned-inputs.json").write_bytes(canonical(inputs) + b"\n")
-        metadata = dict(identities, status="PREPARATION_ONLY_NOT_ADMITTED", node_security_hold=True,
-                        node_version=NODE_VERSION, npm_version=NPM_VERSION, eslint_version="10.12.0",
-                        node_archive_sha256="sha256:" + NODE_SHA256, base_manifest=BASE_MANIFEST,
-                        lock_sha256=digest(lock_bytes), launcher_sha256=digest((prep / "owned-eslint").read_bytes()),
-                        manifest_sha256=digest(manifest_bytes), source_revision=os.environ["GITHUB_SHA"],
-                        run_id=os.environ["GITHUB_RUN_ID"], run_attempt=os.environ["GITHUB_RUN_ATTEMPT"],
-                        npm_flags=flags, base_layers=base_manifest["layers"],
-                        serialization_check="same-process repeat; not independent offline reconstruction",
-                        independent_policy_admission=False, real_tool_execution=False,
-                        elf_library_closure="NOT_VERIFIED; static and runtime compatibility remain separate gates",
-                        python_version=os.sys.version, limits="15 minute hosted job; 180 seconds per npm phase")
-        (artifacts / "preparation.json").write_bytes(canonical(metadata) + b"\n")
-        checksums = "".join(digest(p.read_bytes())[7:] + "  " + p.name + "\n" for p in sorted(artifacts.iterdir()))
-        (artifacts / "SHA256SUMS").write_text(checksums, encoding="ascii")
+        with diagnostic_stage("node-extract"):
+            with tarfile.open(fileobj=io.BytesIO(node_archive), mode="r:xz") as archive:
+                archive.extractall(temp, filter="data")
+        with diagnostic_stage("owned-manifest"):
+            node_root = temp / ("node-v" + NODE_VERSION + "-linux-x64")
+            target, home = temp / "owned", temp / "home"
+            target.mkdir(); home.mkdir()
+            manifest_bytes = (source / "package.json").read_bytes()
+            manifest = unique_json(manifest_bytes)
+            if manifest != {"name": "ci-trust-owned-eslint-preparation", "version": "0.0.0", "private": True, "dependencies": {"eslint": "10.12.0"}}:
+                raise ValueError("unexpected owned manifest")
+            (target / "package.json").write_bytes(manifest_bytes)
+        with diagnostic_stage("npm-setup"):
+            flags = npm_install(node_root, target, home)
+            lock_bytes = (target / "package-lock.json").read_bytes()
+        with diagnostic_stage("base-image"):
+            tree, base_manifest = base_tree()
+        with diagnostic_stage("rootfs"):
+            # Base is pinned and inventoried, not treated as an independently approved
+            # runtime. Reject known development executables instead of inheriting defaults.
+            for name in tree:
+                if posixpath.basename(name) in {"sh", "bash", "dash", "npm", "npx", "gcc", "cc", "python", "python3"}:
+                    raise ValueError("unexpected base executable")
+            add_file(tree, "owned/node/bin/node", (node_root / "bin/node").read_bytes(), True)
+            add_file(tree, "owned/node/LICENSE", (node_root / "LICENSE").read_bytes())
+            add_file(tree, "ci-trust/owned-eslint", (prep / "owned-eslint").read_bytes(), True)
+            add_file(tree, "owned/eslint.config.mjs", inputs["Module"].encode())
+            tree["work"] = ("dir", 0o555, b"")
+            count, total = 0, 0
+            for directory, dirs, files in os.walk(target / "node_modules", followlinks=False):
+                for name in dirs + files:
+                    path = Path(directory) / name
+                    if path.is_symlink():
+                        raise ValueError("installed symlink requires review")
+                for name in files:
+                    path = Path(directory) / name
+                    count += 1; total += path.stat().st_size
+                    if count > MAX_FILES or total > 128 << 20 or not path.is_file():
+                        raise ValueError("installed tree limit")
+                    add_file(tree, "owned/" + path.relative_to(target).as_posix(), path.read_bytes())
+        with diagnostic_stage("image-validation"):
+            records = inventory(tree)
+            image, identities = pack_image(tree)
+            inspect_archive(image, records, identities)
+            reproduced, repeated_ids = pack_image(tree)
+            if reproduced != image or repeated_ids != identities:
+                raise ValueError("nondeterministic archive serialization")
+        with diagnostic_stage("artifact-write"):
+            (artifacts / "image.tar").write_bytes(image)
+            (artifacts / "package.json").write_bytes(manifest_bytes)
+            (artifacts / "package-lock.json").write_bytes(lock_bytes)
+            (artifacts / "inventory.json").write_bytes(canonical(records) + b"\n")
+            (artifacts / "owned-inputs.json").write_bytes(canonical(inputs) + b"\n")
+            metadata = dict(identities, status="PREPARATION_ONLY_NOT_ADMITTED", node_security_hold=True,
+                            node_version=NODE_VERSION, npm_version=NPM_VERSION, eslint_version="10.12.0",
+                            node_archive_sha256="sha256:" + NODE_SHA256, base_manifest=BASE_MANIFEST,
+                            lock_sha256=digest(lock_bytes), launcher_sha256=digest((prep / "owned-eslint").read_bytes()),
+                            manifest_sha256=digest(manifest_bytes), source_revision=os.environ["GITHUB_SHA"],
+                            run_id=os.environ["GITHUB_RUN_ID"], run_attempt=os.environ["GITHUB_RUN_ATTEMPT"],
+                            npm_flags=flags, base_layers=base_manifest["layers"],
+                            serialization_check="same-process repeat; not independent offline reconstruction",
+                            independent_policy_admission=False, real_tool_execution=False,
+                            elf_library_closure="NOT_VERIFIED; static and runtime compatibility remain separate gates",
+                            python_version=os.sys.version, limits="15 minute hosted job; 180 seconds per npm phase")
+            (artifacts / "preparation.json").write_bytes(canonical(metadata) + b"\n")
+            checksums = "".join(digest(p.read_bytes())[7:] + "  " + p.name + "\n" for p in sorted(artifacts.iterdir()))
+            (artifacts / "SHA256SUMS").write_text(checksums, encoding="ascii")
 
 
 if __name__ == "__main__":
-    try:
-        prepare()
-    except Exception:
-        # Raw package logs, redirects, paths and exception text are not evidence.
-        raise SystemExit("owned lint preparation failed; no runtime admission or ESLint execution")
+    raise SystemExit(main())
