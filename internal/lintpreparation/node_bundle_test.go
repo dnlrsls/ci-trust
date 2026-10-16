@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,85 @@ func decodeSyntheticNode(t *testing.T, headers ...*tar.Header) (*NodeBundle, err
 	}
 	return bundle, err
 }
+func TestNodeGraphBudget(t *testing.T) {
+	ctx := context.Background()
+	family := []rawNodeRecord{}
+	for i, name := range []string{"a0", "a1", "a2", "a3", "a4"} {
+		target := "."
+		if i > 0 {
+			previous := []string{"a0", "a1", "a2", "a3"}[i-1]
+			target = previous + "/" + previous
+		}
+		family = append(family, rawNodeRecord{name: nodeBundlePrefix + "/" + name, kind: tar.TypeSymlink, target: target})
+	}
+	run := func(raw []rawNodeRecord, b *nodeGraphBudget) (*NodeBundle, error) {
+		return validateNodeGraphWith(ctx, raw, b)
+	}
+	reject := func(t *testing.T, raw []rawNodeRecord, b *nodeGraphBudget) {
+		t.Helper()
+		bundle, err := run(raw, b)
+		if bundle != nil || Diagnostic(err) != Diagnostic(NewPreparationFailure("node-extract", "validation", "rootfs-limit")) {
+			t.Fatalf("budget accepted: %v %v", bundle, err)
+		}
+	}
+	t.Run("small doubling family adjacent total work", func(t *testing.T) {
+		budget := &nodeGraphBudget{1 << 20, 4096, 256}
+		bundle, err := run(family, budget)
+		used := int64(1<<20) - budget.left
+		if err != nil || bundle == nil || !bundle.sealed || used <= 0 {
+			t.Fatalf("unmetered family: used=%d err=%v", used, err)
+		}
+		reject(t, family, &nodeGraphBudget{used - 1, 4096, 256})
+		exact := &nodeGraphBudget{used, 4096, 256}
+		if bundle, err := run(family, exact); err != nil || bundle == nil || exact.left != 0 {
+			t.Fatalf("exact total: left=%d err=%v", exact.left, err)
+		}
+	})
+	t.Run("shared across records and relocation passes", func(t *testing.T) {
+		single := &nodeGraphBudget{1 << 20, 4096, 256}
+		if _, err := run(family[:1], single); err != nil {
+			t.Fatal(err)
+		}
+		cost := int64(1<<20) - single.left
+		reject(t, family, &nodeGraphBudget{cost, 4096, 256})
+		alias := []rawNodeRecord{{name: nodeBundlePrefix + "/alias", kind: tar.TypeSymlink, target: "dir"}, {name: nodeBundlePrefix + "/alias/file", kind: tar.TypeReg}}
+		measured := &nodeGraphBudget{1 << 20, 4096, 256}
+		if _, err := run(alias, measured); err != nil {
+			t.Fatal(err)
+		}
+		reject(t, alias, &nodeGraphBudget{int64(1<<20) - measured.left - 1, 4096, 256})
+	})
+	t.Run("resolver calls share work and expansion is capped before split", func(t *testing.T) {
+		name := nodeBundlePrefix + "/missing"
+		measured := &nodeGraphBudget{1 << 20, 4096, 256}
+		if _, err := nodeGraphResolve(ctx, measured, nil, name); err != nil {
+			t.Fatal(err)
+		}
+		cost := int64(1<<20) - measured.left
+		shared := &nodeGraphBudget{2*cost - 1, 4096, 256}
+		if _, err := nodeGraphResolve(ctx, shared, nil, name); err != nil {
+			t.Fatal(err)
+		}
+		if path, err := nodeGraphResolve(ctx, shared, nil, name); path != "" || Diagnostic(err) != Diagnostic(NewPreparationFailure("node-extract", "validation", "rootfs-limit")) {
+			t.Fatalf("reset work: %q %v", path, err)
+		}
+		name = nodeBundlePrefix + "/a"
+		index := map[string]rawNodeRecord{name: {name: name, kind: tar.TypeSymlink, target: strings.Repeat("x/", 32)}}
+		// Initial path fits; the pending expansion's conservative slot weight
+		// does not. Only a small 64-byte target is used, never a resource probe.
+		if path, err := nodeGraphResolve(ctx, &nodeGraphBudget{1 << 20, 512, 256}, index, name); path != "" || Diagnostic(err) != Diagnostic(NewPreparationFailure("node-extract", "validation", "rootfs-limit")) {
+			t.Fatalf("uncapped expansion: %q %v", path, err)
+		}
+	})
+	t.Run("preallocation target path and pending caps", func(t *testing.T) {
+		reject(t, family, &nodeGraphBudget{0, 4096, 256})
+		reject(t, family, &nodeGraphBudget{1 << 20, 32, 256})
+		reject(t, family, &nodeGraphBudget{1 << 20, 4096, 2})
+		target := []rawNodeRecord{{name: nodeBundlePrefix + "/target", kind: tar.TypeSymlink, target: "ordinary-but-too-long-for-the-target-cap"}}
+		reject(t, target, &nodeGraphBudget{1 << 20, 4096, 32})
+	})
+}
+
 func TestNodeGraph(t *testing.T) {
 	link := func(name, target string, kind byte) *tar.Header {
 		h := nodeHeader(name, kind)

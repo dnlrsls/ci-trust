@@ -36,11 +36,51 @@ func DecodeNodeBundle(ctx context.Context, compressed []byte) (*NodeBundle, erro
 	}
 	return validateNodeGraph(ctx, raw)
 }
+
+// Work measures conservative byte/slot visits, not elapsed time. SafePath
+// permits 4096 UTF-8 runes: paths/targets cap at 16KiB; pending tokens plus
+// stack cap at 32 such paths (512KiB weighted bytes, including string slots).
+// Total graph work is 32 times the existing 512MiB metadata cap. This owned
+// profile deliberately rejects costlier finite aliases, not just actual cycles.
+// These are technical work/state bounds, not elapsed-time or peak-heap claims.
+const nodeGraphPathBytes = 4 * 4096
+const nodeGraphState = 32 * nodeGraphPathBytes
+const nodeGraphWork int64 = 32 * MaxBytes
+
+type nodeGraphBudget struct {
+	left        int64
+	state, path int
+}
+
+func (b *nodeGraphBudget) take(n int64) bool {
+	if n < 0 || n > b.left {
+		return false
+	}
+	b.left -= n
+	return true
+}
+
+// One reservation covers bounded path scans/joins/hash operations per record.
+// Target length is checked before nodeHostTarget scans it. No payload copying.
+func (b *nodeGraphBudget) record(name, target string) bool {
+	return len(name) <= b.path && len(target) <= b.path && b.take(256+64*int64(len(name))+4*int64(len(target)))
+}
 func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, error) {
+	return validateNodeGraphWith(ctx, raw, &nodeGraphBudget{nodeGraphWork, nodeGraphState, nodeGraphPathBytes})
+}
+
+// Private reduced-budget seam for small synthetic fixtures only.
+func validateNodeGraphWith(ctx context.Context, raw []rawNodeRecord, budget *nodeGraphBudget) (*NodeBundle, error) {
 	fail := func(reason string) (*NodeBundle, error) { return nil, nodeGraphFailure(reason) }
+	if !budget.take(int64(len(raw)) * 32) {
+		return fail("rootfs-limit")
+	}
 	index := map[string]rawNodeRecord{}
 	names := make([]string, len(raw))
 	for i, r := range raw {
+		if !budget.record(r.name, r.target) {
+			return fail("rootfs-limit")
+		}
 		if err := baseContextFailure(ctx, "node-extract"); err != nil {
 			return nil, err
 		}
@@ -63,10 +103,13 @@ func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, e
 		next := map[string]rawNodeRecord{}
 		changed := false
 		for i, r := range raw {
+			if !budget.record(r.name, r.target) {
+				return fail("rootfs-limit")
+			}
 			if err := baseContextFailure(ctx, "node-extract"); err != nil {
 				return nil, err
 			}
-			parent, err := nodeGraphResolve(ctx, index, path.Dir(r.name))
+			parent, err := nodeGraphResolve(ctx, budget, index, path.Dir(r.name))
 			if r.name == nodeBundlePrefix {
 				parent = "."
 				err = nil
@@ -76,6 +119,9 @@ func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, e
 			}
 			if p, ok := index[parent]; ok && p.kind != tar.TypeDir {
 				return fail("layer-ancestor")
+			}
+			if len(parent)+1+len(path.Base(r.name)) > budget.path || !budget.take(256+64*int64(len(parent)+len(r.name))) {
+				return fail("rootfs-limit")
 			}
 			name := path.Join(parent, path.Base(r.name))
 			if _, err := SafePath(name); err != nil {
@@ -104,12 +150,15 @@ func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, e
 	entries := map[string]nodeBundleEntry{}
 	var total int64
 	for name, r := range index {
+		if !budget.record(name, r.target) {
+			return fail("rootfs-limit")
+		}
 		if err := baseContextFailure(ctx, "node-extract"); err != nil {
 			return nil, err
 		}
 		entry := nodeBundleEntry{name: name, kind: r.kind, data: r.data, target: r.target, ownerExecutable: r.ownerExecutable}
 		if r.kind == tar.TypeSymlink || r.kind == tar.TypeLink {
-			resolved, err := nodeGraphResolve(ctx, index, name)
+			resolved, err := nodeGraphResolve(ctx, budget, index, name)
 			if err != nil {
 				return nil, err
 			}
@@ -142,10 +191,16 @@ func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, e
 	}
 	// Missing parents are ordinary implicit directories, not dangling-link errors.
 	for name := range index {
+		if !budget.record(name, "") {
+			return fail("rootfs-limit")
+		}
 		if err := baseContextFailure(ctx, "node-extract"); err != nil {
 			return nil, err
 		}
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			if !budget.record(parent, "") {
+				return fail("rootfs-limit")
+			}
 			if existing, ok := entries[parent]; ok && existing.kind != tar.TypeDir {
 				return fail("layer-ancestor")
 			}
@@ -156,6 +211,24 @@ func validateNodeGraph(ctx context.Context, raw []rawNodeRecord) (*NodeBundle, e
 		}
 	}
 	if len(entries) == 0 || len(entries) > MaxFiles {
+		return fail("rootfs-limit")
+	}
+	// Reserve comparisons (ceil(log2(n))+1), path copying, and assembly BEFORE
+	// allocating output. String comparisons can inspect up to path bytes each.
+	levels := 1
+	for n := len(entries); n > 1; n = (n + 1) / 2 {
+		levels++
+	}
+	if !budget.take(int64(len(entries)) * 32) {
+		return fail("rootfs-limit")
+	}
+	longest := 0
+	for name := range entries {
+		if len(name) > longest {
+			longest = len(name)
+		}
+	}
+	if !budget.take(int64(len(entries)) * int64(longest+32) * int64(16*levels+16)) {
 		return fail("rootfs-limit")
 	}
 	ordered := make([]string, 0, len(entries))
@@ -192,16 +265,29 @@ func nodeHostTarget(target string) bool {
 // Walk components BEFORE processing '..': lexical Clean before following a
 // symlink would incorrectly accept paths such as file/../escape. Hardlinks are
 // archive-root-relative; symlinks are relative to their physical parent.
-func nodeGraphResolve(ctx context.Context, index map[string]rawNodeRecord, name string) (string, error) {
+func nodeGraphResolve(ctx context.Context, budget *nodeGraphBudget, index map[string]rawNodeRecord, name string) (string, error) {
+	initial := int64(len(name))*17 + 16
+	if len(name) > budget.path || initial > int64(budget.state) || !budget.take(initial) {
+		return "", nodeGraphFailure("rootfs-limit")
+	}
 	todo := strings.Split(name, "/")
+	queued := len(name) + 16*len(todo) // includes conservative separator slack
+	stackBytes := 0
 	stack := []string{}
 	followed := map[string]bool{}
 	for len(todo) > 0 {
+		// Pay before scanning pending tokens, joining/hashing stack paths, or
+		// growing slices. Slot weights cover scans even for empty components.
+		state := queued + stackBytes + 16*len(stack)
+		if state > budget.state || !budget.take(16*int64(state)+256) {
+			return "", nodeGraphFailure("rootfs-limit")
+		}
 		if err := baseContextFailure(ctx, "node-extract"); err != nil {
 			return "", err
 		}
 		part := todo[0]
 		todo = todo[1:]
+		queued -= len(part) + 16
 		// End-of-expansion markers distinguish a real cycle from repeated but
 		// finite traversal of the same directory alias in the remaining suffix.
 		if strings.HasPrefix(part, "\x00") {
@@ -222,9 +308,14 @@ func nodeGraphResolve(ctx context.Context, index map[string]rawNodeRecord, name 
 			if len(stack) <= 1 {
 				return "", nodeGraphFailure("link-invalid")
 			}
+			stackBytes -= len(stack[len(stack)-1]) + 1
 			stack = stack[:len(stack)-1]
 			continue
 		}
+		if stackBytes+len(part) > budget.path || queued+stackBytes+len(part)+1+16*(len(stack)+1) > budget.state {
+			return "", nodeGraphFailure("rootfs-limit")
+		}
+		stackBytes += len(part) + 1
 		stack = append(stack, part)
 		if stack[0] != nodeBundlePrefix {
 			return "", nodeGraphFailure("link-invalid")
@@ -238,16 +329,25 @@ func nodeGraphResolve(ctx context.Context, index map[string]rawNodeRecord, name 
 			if followed[current] {
 				return "", nodeGraphFailure("link-cycle")
 			}
+			// Reserve worst-case split slots (one per byte), marker, and queue
+			// copying BEFORE scanning/splitting target or allocating expansion.
+			extra := int64(len(r.target))*17 + int64(len(current)) + 32
+			if len(r.target) > budget.path || int64(queued+stackBytes+16*len(stack))+extra > int64(budget.state) || !budget.take(extra+int64(queued)) {
+				return "", nodeGraphFailure("rootfs-limit")
+			}
 			followed[current] = true
 			if r.kind == tar.TypeLink {
 				if remaining {
 					return "", nodeGraphFailure("layer-ancestor")
 				}
 				stack = nil
+				stackBytes = 0
 			} else {
+				stackBytes -= len(stack[len(stack)-1]) + 1
 				stack = stack[:len(stack)-1]
 			}
 			expansion := append(strings.Split(r.target, "/"), "\x00"+current)
+			queued += len(r.target) + 16*(len(expansion)-1) + len(current) + 1 + 16
 			todo = append(expansion, todo...)
 		} else if r.kind != tar.TypeDir && remaining {
 			return "", nodeGraphFailure("layer-ancestor")
