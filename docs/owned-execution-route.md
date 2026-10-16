@@ -61,7 +61,9 @@ plan digest or workflow dispatch is never that decision.
 The execution command checks the plan against the current
 `GITHUB_SHA`, `GITHUB_RUN_ID` and `GITHUB_RUN_ATTEMPT`. A read-only GitHub audit
 then requires the repository owner to have approved the protected Environment
-with the exact comment `approve <binding_digest>`. It checks the configured
+with the exact comment `approve <binding_digest>`. The comment allows only one
+optional terminal LF or CRLF; spaces, additional lines
+and other text remain invalid. It checks the configured
 reviewer, no-admin-bypass policy, workflow, actor, source, run, attempt and expiry.
 Environment approval without the exact comment is rejected. The command never
 posts an approval or changes policy.

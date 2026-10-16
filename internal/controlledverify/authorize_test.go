@@ -1,6 +1,7 @@
 package controlledverify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -62,6 +63,38 @@ func TestAuthorizationJoinsCatalogSnapshotAndAuthenticatedDecision(t *testing.T)
 	consent, err := d.forPlan(p.Plan, now)
 	if err != nil || !consent.Approved || consent.Digest != p.PlanDigest {
 		t.Fatal("exact authenticated consent lost")
+	}
+}
+
+func TestAuthorizationAcceptsAuthenticatedCommentCRLF(t *testing.T) {
+	p, root, g, calls, now := authorizationFixture(t)
+	base := g.http.Transport
+	g.http.Transport = fakeHTTP(func(r *http.Request) (*http.Response, error) {
+		response, err := base.RoundTrip(r)
+		if err != nil || !strings.HasSuffix(r.URL.Path, "/approvals") {
+			return response, err
+		}
+		var reviews []approvalReview
+		err = json.NewDecoder(response.Body).Decode(&reviews)
+		response.Body.Close()
+		if err != nil || len(reviews) != 1 {
+			t.Fatalf("invalid review fixture: %v", err)
+		}
+		reviews[0].Comment += "\r\n"
+		b, err := json.Marshal(reviews)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body = io.NopCloser(bytes.NewReader(b))
+		return response, nil
+	})
+	d, err := authorizeProof(context.Background(), p, root, g, func() time.Time { return now })
+	if err != nil || *calls != 5 {
+		t.Fatalf("CRLF authorization failed: calls=%d err=%v", *calls, err)
+	}
+	consent, err := d.forPlan(p.Plan, now)
+	if err != nil || !consent.Approved || consent.Digest != p.PlanDigest {
+		t.Fatal("CRLF approval lost exact plan binding")
 	}
 }
 
