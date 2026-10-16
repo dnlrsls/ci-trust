@@ -2,6 +2,8 @@ package controlledplan
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -51,7 +53,8 @@ func TestRejectEveryEnvelopeMutation(t *testing.T) {
 	mutations := map[string]func(*Envelope){
 		"snapshot": func(e *Envelope) { e.Plan.Snapshot = strings.Repeat("d", 64) }, "image": func(e *Envelope) { e.Plan.Image = "sha256:" + strings.Repeat("d", 64) },
 		"adapter": func(e *Envelope) { e.Plan.Adapter = "other" }, "tool": func(e *Envelope) { e.Plan.Tool = "other" }, "fixture": func(e *Envelope) { e.Plan.Fixture = "other" }, "config": func(e *Envelope) { e.Plan.Config = "other" }, "effects": func(e *Envelope) { e.Plan.Effects = "other" },
-		"wall": func(e *Envelope) { e.Plan.Limits.Wall++ }, "memory": func(e *Envelope) { e.Plan.Limits.MemoryBytes++ }, "cpus": func(e *Envelope) { e.Plan.Limits.CPUs++ }, "pids": func(e *Envelope) { e.Plan.Limits.PIDs++ }, "output": func(e *Envelope) { e.Plan.Limits.OutputBytes++ }, "scratch": func(e *Envelope) { e.Plan.Limits.ScratchBytes++ },
+		"transport": func(e *Envelope) { e.Plan.Transport = "split-stdin-v1" },
+		"wall":      func(e *Envelope) { e.Plan.Limits.Wall++ }, "memory": func(e *Envelope) { e.Plan.Limits.MemoryBytes++ }, "cpus": func(e *Envelope) { e.Plan.Limits.CPUs++ }, "pids": func(e *Envelope) { e.Plan.Limits.PIDs++ }, "output": func(e *Envelope) { e.Plan.Limits.OutputBytes++ }, "scratch": func(e *Envelope) { e.Plan.Limits.ScratchBytes++ },
 		"revision": func(e *Envelope) { e.Revision = strings.Repeat("d", 40) }, "run": func(e *Envelope) { e.RunID = "124" }, "attempt": func(e *Envelope) { e.RunAttempt = "3" }, "repository": func(e *Envelope) { e.Repository = "other" }, "version": func(e *Envelope) { e.Version = 2 }, "scope": func(e *Envelope) { e.Scope = "execution" }, "plan digest": func(e *Envelope) { e.PlanDigest = strings.Repeat("d", 64) }, "binding": func(e *Envelope) { e.BindingDigest = strings.Repeat("d", 64) },
 	}
 	for name, mutate := range mutations {
@@ -64,6 +67,20 @@ func TestRejectEveryEnvelopeMutation(t *testing.T) {
 				t.Fatal("accepted mutation")
 			}
 		})
+	}
+}
+
+func TestRejectReboundSplitTransport(t *testing.T) {
+	e := fixture(t)
+	e.Plan.Transport = "split-stdin-v1"
+	e.PlanDigest = e.Plan.Digest()
+	e.BindingDigest = ""
+	sum := sha256.Sum256(bytes.TrimSuffix(e.JSON(), []byte("\n")))
+	e.BindingDigest = hex.EncodeToString(sum[:])
+	// A caller can calculate every digest, but cannot expand the fixed public
+	// preparation profile. A new transport needs its own reviewed composition.
+	if _, err := Check(bytes.NewReader(e.JSON()), e.BindingDigest, e.Revision, e.RunID, e.RunAttempt); err == nil {
+		t.Fatal("self-rebound transport expanded public profile")
 	}
 }
 func TestStrictJSONAndExternalContext(t *testing.T) {

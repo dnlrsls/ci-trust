@@ -6,6 +6,11 @@ public `verify` command, or real sensitivity evidence is shipped by this unit.
 #9 acceptance remains open. The separately recorded [bounded #8 acceptance](https://github.com/dnlrsls/ci-trust/issues/8#issuecomment-6206909812)
 does not authorize ESLint execution.**
 
+The [runtime preparation and integration plan](lint-runtime-plan.md) records
+candidate upstream versions, unresolved immutable pins, the Node security review
+gate and the runner transport/image changes required before admission. It does
+not select an executable catalog entry or authorize preparation/execution.
+
 `internal/lintsensitivity` has no filesystem reads, subprocesses, network,
 configuration loading, consent creation, or runner connection. Its JavaScript is
 data, not executed code. Both raw captures and normalized observations are

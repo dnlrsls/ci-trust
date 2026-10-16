@@ -19,7 +19,8 @@ import (
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "--config" {
 		isLoad := len(os.Args) == 8 && os.Args[5] == "image" && os.Args[6] == "load" && os.Args[7] == "--quiet"
-		if len(os.Args) != 6 && !isLoad && !(len(os.Args) == 8 && os.Args[5] == "start" && os.Args[6] == "--attach" && os.Args[7] == fakeID) {
+		isSplit := len(os.Args) == 9 && os.Args[5] == "start" && os.Args[6] == "--attach" && os.Args[7] == "--interactive" && os.Args[8] == fakeID
+		if len(os.Args) != 6 && !isLoad && !isSplit && !(len(os.Args) == 8 && os.Args[5] == "start" && os.Args[6] == "--attach" && os.Args[7] == fakeID) {
 			os.Exit(92)
 		}
 		if os.Args[3] != "--host" || os.Args[4] != "unix:///var/run/docker.sock" || os.Getenv("HOME") != os.Args[2] || os.Getenv("DOCKER_CONFIG") != os.Args[2] || os.Getenv("DOCKER_HOST") != "" || os.Getenv("DOCKER_CONTEXT") != "" || os.Getenv("AWS_SECRET_ACCESS_KEY") != "" {
@@ -48,6 +49,26 @@ func TestMain(m *testing.M) {
 			fmt.Fprint(os.Stdout, "owned load stdout\n")
 			fmt.Fprint(os.Stderr, "owned load stderr\n")
 		case "start":
+			if isSplit {
+				b, err := io.ReadAll(io.LimitReader(os.Stdin, (64<<10)+1))
+				if err != nil || len(b) > 64<<10 {
+					os.Exit(95)
+				}
+				switch string(b) {
+				case "owned-attach-delay":
+					time.Sleep(2300 * time.Millisecond)
+				case "owned-attach-overflow":
+					fmt.Fprint(os.Stdout, strings.Repeat("x", 40000))
+					fmt.Fprint(os.Stderr, strings.Repeat("y", 40000))
+					os.Exit(0)
+				case "owned-attach-error":
+					fmt.Fprint(os.Stderr, "owned attach failed\n")
+					os.Exit(1)
+				}
+				fmt.Fprint(os.Stdout, "owned attach stdout\n"+string(b))
+				fmt.Fprint(os.Stderr, "owned attach stderr\n")
+				os.Exit(0)
+			}
 			time.Sleep(2300 * time.Millisecond)
 			fmt.Fprint(os.Stdout, "owned attach stdout\n")
 			fmt.Fprint(os.Stderr, "owned attach stderr\n")
@@ -56,6 +77,16 @@ func TestMain(m *testing.M) {
 		case "owned-streams":
 			fmt.Fprint(os.Stdout, "owned stdout\n")
 			fmt.Fprint(os.Stderr, "owned stderr\n")
+		case "owned-input":
+			_, _ = io.Copy(os.Stdout, io.LimitReader(os.Stdin, (64<<10)+1))
+		case "owned-split-exact":
+			fmt.Fprint(os.Stdout, strings.Repeat("x", 32<<10))
+			fmt.Fprint(os.Stderr, strings.Repeat("y", 32<<10))
+		case "owned-split-overflow":
+			fmt.Fprint(os.Stdout, strings.Repeat("x", 40000))
+			fmt.Fprint(os.Stderr, strings.Repeat("y", 40000))
+		case "owned-stderr-overflow":
+			fmt.Fprint(os.Stderr, strings.Repeat("y", (64<<10)+1))
 		case "owned-overflow":
 			fmt.Fprint(os.Stdout, strings.Repeat("x", 100000))
 			fmt.Fprint(os.Stderr, strings.Repeat("y", 100000))
