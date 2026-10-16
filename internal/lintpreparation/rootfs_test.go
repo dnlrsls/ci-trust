@@ -35,8 +35,31 @@ func reason(t *testing.T, err error, want string) {
 		t.Fatalf("error=%v, want reason %s", err, want)
 	}
 }
+func TestRootfsRegularFiles(t *testing.T) {
+	for _, kind := range []byte{tar.TypeReg, tar.TypeRegA, tar.TypeCont} {
+		for _, executable := range []bool{false, true} {
+			mode, wantMode := int64(0666), int64(0444)
+			if executable {
+				mode, wantMode = 0766, 0555
+			}
+			t.Run(strconv.Itoa(int(kind))+"/"+strconv.FormatBool(executable), func(t *testing.T) {
+				keep := Node{Kind: "file", Mode: 0444, Data: []byte("retained")}
+				tree := Tree{"existing": keep}
+				data := layer(t, &tar.Header{Name: "file", Typeflag: kind, Mode: mode, Size: 3})
+				if err := Overlay(tree, data); err != nil {
+					t.Fatal(err)
+				}
+				want := Tree{"existing": keep, "file": {Kind: "file", Mode: wantMode, Data: []byte("xxx")}}
+				if !reflect.DeepEqual(tree, want) {
+					t.Fatalf("tree=%#v, want %#v", tree, want)
+				}
+			})
+		}
+	}
+}
+
 func TestRootfsPrivileges(t *testing.T) {
-	kinds := []byte{tar.TypeDir, tar.TypeReg, tar.TypeSymlink, tar.TypeLink, tar.TypeChar, tar.TypeBlock, tar.TypeFifo}
+	kinds := []byte{tar.TypeDir, tar.TypeReg, tar.TypeRegA, tar.TypeCont, tar.TypeSymlink, tar.TypeLink, tar.TypeChar, tar.TypeBlock, tar.TypeFifo}
 	for _, name := range []string{"var/local", ".", "./"} {
 		for _, kind := range kinds {
 			if name != "var/local" && kind != tar.TypeDir {

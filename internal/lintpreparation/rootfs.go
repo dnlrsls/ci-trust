@@ -149,7 +149,7 @@ func Overlay(tree Tree, data []byte) error {
 		switch h.Typeflag {
 		case tar.TypeDir:
 			node = Node{Kind: "dir", Mode: 0555}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg, tar.TypeRegA, tar.TypeCont:
 			if h.Size < 0 || h.Size > MaxBytes-total {
 				return NewValidationFailure("layer-expanded-limit")
 			}
