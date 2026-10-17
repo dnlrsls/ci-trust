@@ -1,0 +1,119 @@
+// Package lintverify integrates owned lint data with a closed production gate.
+// It does not admit an image, authenticate a live review or execute a tool.
+package lintverify
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"regexp"
+	"time"
+
+	ls "github.com/dnlrsls/ci-trust/internal/lintsensitivity"
+)
+
+// Catalog and dependency seams are private: input files/CLI arguments cannot
+// supply an admitted runtime, an approval boolean or a process callback.
+type catalog struct {
+	image, archive, layer, node, eslint string
+	securityHold, admitted              bool
+}
+
+func productionCatalog() catalog {
+	return catalog{
+		image:   "sha256:f047932f89d4798983a5c5e13ec32843c00fd44795844ea7969c51a15d8289dc",
+		archive: "sha256:371afa8ec9404f48a353782f3654975ff80349b67130d4986d44e8f3edca3ceb",
+		layer:   "sha256:97343ac30b461e4faef346c9ffe56a047efe90699c5aeda727bc987ada93cad7",
+		node:    "24.22.0", eslint: "10.12.0", securityHold: true, admitted: false,
+	}
+}
+func (c catalog) blocked() string {
+	if c.securityHold {
+		return "NODE_SECURITY_HOLD"
+	}
+	if !c.admitted {
+		return "LINT_IMAGE_NOT_ADMITTED"
+	}
+	return ""
+}
+
+type ownedCase struct {
+	Role                 ls.Role
+	FixtureSHA256, Stdin string
+	Args                 [9]string
+}
+type plan struct {
+	Identity                                                              ls.Identity
+	ArchiveSHA256, LayerDiffID, ModuleSHA256, ParserRevision, NodeVersion string
+	Cases                                                                 [3]ownedCase
+	WallSeconds, OutputBytes, MemoryBytes, CPUs, PIDs, ScratchBytes       int
+}
+
+var sourceHash = regexp.MustCompile(`^[a-f0-9]{64}$`)
+
+func planFor(c catalog, snapshot string) (plan, bool) {
+	if !sourceHash.MatchString(snapshot) || !sourceHash.MatchString(trimDigest(c.image)) || !sourceHash.MatchString(trimDigest(c.archive)) || !sourceHash.MatchString(trimDigest(c.layer)) {
+		return plan{}, false
+	}
+	p := plan{Identity: ls.Identity{Tool: "eslint", Version: c.eslint, ConfigSHA256: ls.ConfigSHA256(), Image: c.image, Environment: "owned-lint-v1", OS: "LINUX", Snapshot: snapshot}, ArchiveSHA256: c.archive, LayerDiffID: c.layer, ParserRevision: "eslint-receipt-json-v1", NodeVersion: c.node, WallSeconds: 10, OutputBytes: 64 << 10, MemoryBytes: 256 << 20, CPUs: 1, PIDs: 16, ScratchBytes: 16 << 20}
+	for i, role := range []ls.Role{ls.Clean, ls.Fault, ls.Restored} {
+		invocation, ok := ls.OwnedESLintInvocation(role)
+		if !ok || len(invocation.Args) != 9 {
+			return plan{}, false
+		}
+		fixture, _ := ls.FixtureFor(role)
+		p.Cases[i] = ownedCase{Role: role, FixtureSHA256: fixture.SHA256, Stdin: fixture.Source}
+		copy(p.Cases[i].Args[:], invocation.Args)
+		p.ModuleSHA256 = invocation.ConfigSHA256
+	}
+	return p, true
+}
+func trimDigest(s string) string {
+	if len(s) != 71 || s[:7] != "sha256:" {
+		return ""
+	}
+	return s[7:]
+}
+func (p plan) digest() string {
+	b, _ := json.Marshal(p)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// A real review transport is intentionally unavailable. Tests alone construct
+// synthetic private decisions; a framed tool receipt is never such a decision.
+type approval struct {
+	binding string
+	expires time.Time
+}
+type captureResult struct {
+	capture         ls.ESLintCapture
+	cleanupVerified bool
+}
+type dependencies struct {
+	catalog   catalog
+	review    func(context.Context, plan) (approval, error)
+	preflight func(context.Context, plan) error
+	capture   func(context.Context, plan, ownedCase, string) captureResult
+	snapshot  func() (string, error)
+	now       func() time.Time
+}
+type outcome struct {
+	decision     ls.Result
+	observations []ls.Observation
+}
+
+func unresolved(reason string) outcome {
+	return outcome{decision: ls.Result{Outcome: ls.Unverifiable, Reason: reason, Scope: "TOOL_FIXTURE"}}
+}
+func evaluate(ctx context.Context, snapshot string, d dependencies) outcome {
+	// This must precede every authorizer, clock, snapshot and runtime seam.
+	if reason := d.catalog.blocked(); reason != "" {
+		return unresolved(reason)
+	}
+	if _, ok := planFor(d.catalog, snapshot); !ok {
+		return unresolved("LINT_IDENTITY_INVALID")
+	}
+	return unresolved("LINT_EXECUTION_UNAVAILABLE")
+}
