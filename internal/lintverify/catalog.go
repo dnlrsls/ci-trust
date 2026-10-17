@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/dnlrsls/ci-trust/internal/lintcatalog"
 	ls "github.com/dnlrsls/ci-trust/internal/lintsensitivity"
 )
 
@@ -21,12 +22,9 @@ type catalog struct {
 }
 
 func productionCatalog() catalog {
-	return catalog{
-		image:   "sha256:f047932f89d4798983a5c5e13ec32843c00fd44795844ea7969c51a15d8289dc",
-		archive: "sha256:371afa8ec9404f48a353782f3654975ff80349b67130d4986d44e8f3edca3ceb",
-		layer:   "sha256:97343ac30b461e4faef346c9ffe56a047efe90699c5aeda727bc987ada93cad7",
-		node:    "24.22.0", eslint: "10.12.0", securityHold: true, admitted: false,
-	}
+	c := lintcatalog.Current()
+	return catalog{image: c.Image, archive: c.Archive, layer: c.Layer, node: c.Node,
+		eslint: c.ESLint, securityHold: c.SecurityHold, admitted: c.Admitted}
 }
 func (c catalog) blocked() string {
 	if c.securityHold {
