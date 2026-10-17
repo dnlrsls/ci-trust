@@ -116,6 +116,14 @@ func TestOwnedImportRefusals(t *testing.T) {
 			if err == nil || got != nil {
 				t.Fatalf("accepted invalid installed shape: %v %v", got, err)
 			}
+			reason := "rootfs-entry-type"
+			switch kind {
+			case "missing", "file", "symlink-root":
+				reason = "rootfs-modules"
+			case "missing-target", "relative", "symlink-target":
+				reason = "rootfs-target"
+			}
+			assertRootfsReason(t, err, reason)
 			unchanged(t)
 		})
 	}
@@ -128,6 +136,16 @@ func TestOwnedImportRefusals(t *testing.T) {
 			if err == nil || got != nil {
 				t.Fatal("collision/ancestor/descendant accepted")
 			}
+			reason := "rootfs-parent-type"
+			switch p {
+			case "owned":
+				reason = "rootfs-seed-parent"
+			case "owned/node_modules/pkg/a":
+				reason = "rootfs-entry-collision"
+			case "owned/node_modules/pkg/a/child":
+				reason = "rootfs-file-ancestor"
+			}
+			assertRootfsReason(t, err, reason)
 			unchanged(t)
 			source, err := os.ReadFile(filepath.Join(target, "node_modules", "pkg", "a"))
 			if err != nil || string(source) != "a" {
@@ -277,6 +295,15 @@ func seedSnapshot(base Tree, b *NodeBundle, launcher, module []byte) func(*testi
 	}
 }
 
+func assertRootfsReason(t *testing.T, err error, reason string) {
+	t.Helper()
+	wrapped := InStage("rootfs", func() error { return err })
+	want := "owned lint preparation failed; stage=rootfs; category=validation; reason=" + reason + "; no runtime admission or ESLint execution"
+	if got := Diagnostic(wrapped); got != want {
+		t.Fatalf("diagnostic = %q; want %q", got, want)
+	}
+}
+
 func TestOwnedSeedExact(t *testing.T) {
 	for _, work := range []Node{{Kind: "dir", Mode: 0555}, {Kind: "file", Mode: 0444, Data: []byte("old")}, {Kind: "link", Mode: 0777, Target: "lib"}} {
 		t.Run(work.Kind, func(t *testing.T) {
@@ -351,6 +378,13 @@ func TestOwnedSeedGuards(t *testing.T) {
 			if err == nil || got != nil {
 				t.Fatalf("guard returned partial/success: %v %v", got, err)
 			}
+			reason := "rootfs-bundle"
+			if strings.HasPrefix(tc.name, "bin/node/") {
+				reason = "rootfs-node"
+			} else if strings.HasPrefix(tc.name, "LICENSE/") {
+				reason = "rootfs-license"
+			}
+			assertRootfsReason(t, err, reason)
 			unchanged(t)
 		})
 	}
@@ -358,20 +392,25 @@ func TestOwnedSeedGuards(t *testing.T) {
 
 func TestOwnedSeedBansAndConflicts(t *testing.T) {
 	cases := map[string]Tree{}
+	reasons := map[string]string{}
 	for _, ban := range strings.Fields("sh bash dash npm npx gcc cc python python3") {
 		for _, kind := range []string{"file", "dir", "link"} {
 			cases[ban+kind] = Tree{"usr": {Kind: "dir", Mode: 0555}, "usr/" + ban: {Kind: kind, Mode: 0555}}
+			reasons[ban+kind] = "rootfs-base-banned"
 		}
 	}
 	for _, p := range []string{"owned/node/bin/node", "owned/node/LICENSE", "ci-trust/owned-eslint", "owned/eslint.config.mjs"} {
 		for _, kind := range []string{"file", "dir", "link"} {
 			cases[p+kind] = Tree{p: {Kind: kind, Mode: 0555}}
+			reasons[p+kind] = "rootfs-seed-collision"
 		}
 		cases[p+"/descendant"] = Tree{p + "/child": {Kind: "file", Mode: 0444, Data: []byte("child")}}
+		reasons[p+"/descendant"] = "rootfs-seed-descendant"
 	}
 	for _, p := range []string{"owned", "owned/node", "owned/node/bin", "ci-trust"} {
 		for _, kind := range []string{"file", "link"} {
 			cases[p+kind] = Tree{p: {Kind: kind, Mode: 0555}}
+			reasons[p+kind] = "rootfs-seed-parent"
 		}
 	}
 	for name, base := range cases {
@@ -393,6 +432,7 @@ func TestOwnedSeedBansAndConflicts(t *testing.T) {
 			if err == nil || got != nil {
 				t.Fatalf("conflict accepted: %v %v", got, err)
 			}
+			assertRootfsReason(t, err, reasons[name])
 			unchanged(t)
 		})
 	}

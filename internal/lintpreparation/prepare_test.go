@@ -204,6 +204,9 @@ func TestPrepare(t *testing.T) {
 				if !errors.As(e, &f) || f.Stage != stage || f.Category != category {
 					t.Fatalf("stage/category: %v want %s/%s", e, stage, category)
 				}
+				if fail == "launcher" && f.Reason != "rootfs-launcher" {
+					t.Fatalf("launcher diagnostic lost its predicate: %#v", f)
+				}
 				if strings.Contains(Diagnostic(e), "private") {
 					t.Fatal("raw detail leaked")
 				}

@@ -65,6 +65,29 @@ newline on stderr, with fixed stage/category/reason vocabulary. Arguments,
 environment values, raw errors, paths, URLs and process output are not echoed.
 A failed diagnostic write gets no secondary raw-error fallback.
 
+### Rootfs refusal reasons
+
+A rootfs failure may include a fixed `reason=` identifier. These identifiers
+localize a refusal without revealing the rejected path or weakening its guard:
+
+| Reason | Refusal class |
+| --- | --- |
+| `rootfs-launcher` | Owned launcher input read (original category is retained) |
+| `rootfs-bundle`, `rootfs-node`, `rootfs-license` | Sealed bundle or required regular payload |
+| `rootfs-base-banned` | Forbidden executable basename in the base tree |
+| `rootfs-seed-descendant`, `rootfs-seed-parent`, `rootfs-seed-collision` | Owned seed namespace conflict |
+| `rootfs-target`, `rootfs-modules` | Stable ordinary installation or node_modules root |
+| `rootfs-entry-path`, `rootfs-entry-type` | Installed entry path or classification |
+| `rootfs-entry-access`, `rootfs-entry-read` | Entry access/stability/iteration/close or bounded read |
+| `rootfs-entry-collision`, `rootfs-file-ancestor`, `rootfs-parent-type` | Installed entry namespace conflict |
+| `rootfs-limit` | Existing entry, payload or metadata budget |
+
+For example, `stage=rootfs; category=validation; reason=rootfs-entry-type`
+identifies a refused installed entry class, not its name. It does not prove why
+an earlier run with no reason failed. Unknown reason strings are still omitted;
+paths, URLs, raw errors and process output are never printed. Missing directories,
+symlinks, forbidden content, collisions and resource overruns remain rejected.
+
 ## Migration status and gates
 
 The protected workflow source now tests the Go preparation subtree offline, then
