@@ -10,6 +10,82 @@ import (
 	"runtime"
 )
 
+type preparationEffects struct {
+	acquire   func(context.Context, string) (*acquiredPreparation, error)
+	base      func(context.Context) (Tree, map[string]any, error)
+	rootfs    func(context.Context, Tree, *NodeBundle, string, []byte, []byte) (Tree, error)
+	artifacts func(context.Context, artifactRequest) (map[string][]byte, error)
+}
+
+func fixedPreparationEffects() preparationEffects {
+	return preparationEffects{acquirePreparation, LoadBase, buildOwnedRootfs, buildArtifacts}
+}
+
+// Prepare builds preparation-only artifacts under the trusted, stable workspace's
+// .git/lint-image-preparation directory. It requires Linux/amd64 and fixed pinned
+// dependencies; no host credentials/configuration are inherited by npm. Source
+// and run metadata are recorded as supplied, not independently authenticated.
+// Success is NOT runtime admission, tool compatibility or independent reproduction.
+// Owned temp cleanup is checked; filesystem writes are not an atomic job rollback.
+func Prepare(ctx context.Context, workspace, sourceRevision, runID, runAttempt string) error {
+	return prepareWith(ctx, workspace, sourceRevision, runID, runAttempt, fixedPreparationEffects())
+}
+
+// Private effects isolate orchestration tests; production never accepts overrides.
+func prepareWith(ctx context.Context, workspace, sourceRevision, runID, runAttempt string, d preparationEffects) (err error) {
+	run := func(stage string, f func() error) error {
+		return InStage(stage, func() error {
+			if e := baseContextFailure(ctx, stage); e != nil {
+				return e
+			}
+			return f()
+		})
+	}
+	var s *acquiredPreparation
+	err = run("host-inputs", func() error { var e error; s, e = d.acquire(ctx, workspace); return e })
+	if err != nil {
+		return err
+	}
+	// Acquisition transfers all owned roots/temp here. Cleanup is independent of
+	// cancellation; primary inner-stage failure wins diagnostic precedence.
+	defer func() { err = errors.Join(err, s.finish()) }()
+	var base, tree Tree
+	var baseManifest map[string]any
+	err = run("base-image", func() error { var e error; base, baseManifest, e = d.base(ctx); return e })
+	if err != nil {
+		return err
+	}
+	var launcher []byte
+	err = run("rootfs", func() error {
+		var e error
+		launcher, e = s.fs.launcher(ctx, MaxBytes)
+		if e != nil {
+			return e
+		}
+		tree, e = d.rootfs(ctx, base, s.bundle, s.target, launcher, s.inputs.module)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	var payloads map[string][]byte
+	// The accepted builder preserves its own image-validation/artifact-write inner
+	// stages. Launcher bytes are exactly those consumed by assembly, never reread.
+	err = run("image-validation", func() error {
+		var e error
+		payloads, e = d.artifacts(ctx, artifactRequest{
+			tree: tree, manifest: s.manifest, lock: s.lock, launcher: launcher,
+			ownedInputs: s.inputs.owned, baseManifest: baseManifest, npmFlags: s.flags,
+			sourceRevision: sourceRevision, runID: runID, runAttempt: runAttempt,
+		})
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	return run("artifact-write", func() error { return s.fs.writeArtifacts(ctx, payloads) })
+}
+
 // Acquisition effects are private fixture seams, never caller configuration.
 type acquisitionEffects struct {
 	goos, goarch string
