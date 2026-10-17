@@ -81,6 +81,7 @@ localize a refusal without revealing the rejected path or weakening its guard:
 | `rootfs-entry-access`, `rootfs-entry-read` | Entry access/stability/iteration/close or bounded read |
 | `rootfs-entry-collision`, `rootfs-file-ancestor`, `rootfs-parent-type` | Installed entry namespace conflict |
 | `rootfs-limit` | Existing entry, payload or metadata budget |
+| `rootfs-timezone` | Standard missing timezone target cannot use a plain readonly authenticated UTC source |
 
 For example, `stage=rootfs; category=validation; reason=rootfs-entry-type`
 identifies a refused installed entry class, not its name. It does not prove why
@@ -95,6 +96,23 @@ path, privilege, namespace and resource checks. A file or link with a reserved
 basename is still rejected, even when a regular file has no execute bits. This
 is not an exception for two fixed paths, a runtime compatibility result or
 permission to execute Python, a compiler or any image content.
+
+## Owned timezone configuration
+
+If the base's `usr/share/zoneinfo/localtime` link targets missing `/etc/localtime`,
+the owned seed creates `etc/localtime` as a `0444` regular file using immutable
+bytes from the authenticated base's `usr/share/zoneinfo/Etc/UTC`. That source must
+be a plain `0444` regular file; missing, directory, symlink or executable sources
+are refused with `rootfs-timezone`. This copies image data, not the host's timezone
+or a host path, and does not execute or interpret the timezone payload.
+
+Existing `etc/localtime` entries are never overwritten. A base without the
+standard alias, or an alias pointing elsewhere, gets no opportunistic repair.
+The new file and any required parent directory use the existing namespace,
+entry, payload and metadata bounds. All final links must still resolve; unrelated
+dangling links, cycles, traversal and conflicting parents remain rejected.
+This configuration addition is not proof of successful hosted preparation or
+runtime/library compatibility, nor permission to execute image content.
 
 ## Migration status and gates
 

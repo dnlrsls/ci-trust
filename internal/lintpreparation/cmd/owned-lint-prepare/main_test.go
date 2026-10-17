@@ -133,7 +133,7 @@ func TestRunRootfsReasons(t *testing.T) {
 		"rootfs-launcher", "rootfs-bundle", "rootfs-node", "rootfs-license",
 		"rootfs-base-banned", "rootfs-seed-descendant", "rootfs-seed-parent", "rootfs-seed-collision",
 		"rootfs-target", "rootfs-modules", "rootfs-entry-path", "rootfs-entry-type", "rootfs-entry-access",
-		"rootfs-entry-collision", "rootfs-file-ancestor", "rootfs-parent-type", "rootfs-entry-read",
+		"rootfs-entry-collision", "rootfs-file-ancestor", "rootfs-parent-type", "rootfs-entry-read", "rootfs-timezone",
 		"private/path?token=private\nrootfs-entry-type",
 	} {
 		t.Run(reason, func(t *testing.T) {

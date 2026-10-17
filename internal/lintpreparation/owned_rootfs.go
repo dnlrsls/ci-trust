@@ -262,15 +262,33 @@ func seedOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, lau
 	if files < 0 || byteLimit < 0 || len(base) > files {
 		return nil, limit()
 	}
-	additions := []struct {
+	type ownedFile struct {
 		name string
 		data []byte
 		mode int64
-	}{
+	}
+	additions := []ownedFile{
 		{"owned/node/bin/node", node, 0555},
 		{"owned/node/LICENSE", license, 0444},
 		{"ci-trust/owned-eslint", launcher, 0555},
 		{"owned/eslint.config.mjs", module, 0444},
+	}
+	// Complete only the base's standard dangling timezone alias. UTC bytes are
+	// borrowed from the already authenticated base, never the host timezone.
+	if _, exists := base["etc/localtime"]; !exists {
+		if alias, ok := base["usr/share/zoneinfo/localtime"]; ok && alias.Kind == "link" {
+			target, err := LinkPath("usr/share/zoneinfo/localtime", alias.Target)
+			if err != nil {
+				return nil, err
+			}
+			if target == "etc/localtime" {
+				utc, ok := base["usr/share/zoneinfo/Etc/UTC"]
+				if !ok || utc.Kind != "file" || utc.Mode != 0444 {
+					return nil, NewValidationFailure("rootfs-timezone")
+				}
+				additions = append(additions, ownedFile{"etc/localtime", utc.Data, 0444})
+			}
+		}
 	}
 	var count int
 	var payload, metadata int64
