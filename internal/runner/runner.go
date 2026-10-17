@@ -87,6 +87,7 @@ type Runner struct {
 	runtime  Runtime
 	owned    Plan
 	snapshot Snapshot
+	lint     bool
 }
 
 var imageID = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
@@ -106,7 +107,7 @@ func NewOwned(rt Runtime, owned Plan, snapshot Snapshot) (*Runner, error) {
 	if rt == nil || snapshot == nil || !valid(owned) {
 		return nil, errors.New("invalid owned plan")
 	}
-	return &Runner{rt, owned, snapshot}, nil
+	return &Runner{runtime: rt, owned: owned, snapshot: snapshot}, nil
 }
 
 // Digest binds every displayed identity, limit and effect; it is not an approval token.
@@ -127,7 +128,11 @@ func (p Plan) Display() string {
 // into Approved. This package has no CLI or autonomous consent facility.
 func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	result := Result{Outcome: Invalid, ExitCode: -1}
-	if !valid(p) || p != r.owned {
+	allowed := valid(p)
+	if r.lint {
+		allowed = validLint(p)
+	}
+	if !allowed || p != r.owned {
 		result.Reason = "plan outside owned allowlist"
 		return result
 	}
@@ -172,8 +177,8 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	var runErr error
 	var captured *splitOutput
 	if split != nil {
-		// The sole admitted smoke fixture has no stdin bytes. A future lint
-		// catalog must bind role-specific owned input before it is admitted.
+		// Both owned entrypoints receive empty container stdin. The lint
+		// launcher selects and feeds its fixed fixture internally from the role.
 		c, err := split.startCaptured(runCtx, name, dockerArgs(p, name), "")
 		code, runErr = c.ExitCode, err
 		captured = &splitOutput{max: p.Limits.OutputBytes, cancel: cancel}
@@ -204,6 +209,8 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 		result.Reason = "execution canceled or walltime exceeded"
 	case runErr != nil:
 		result.Reason = "harness: " + runErr.Error()
+	case r.lint && code != 0:
+		result.Reason = "lint launcher completion unverified"
 	default:
 		result.Outcome = Completed
 		result.Reason = "tool exited; exit status is not validator sensitivity evidence"
@@ -223,6 +230,9 @@ func uniqueName() string {
 	return fmt.Sprintf("ci-trust-%d-%d", time.Now().UnixNano(), sequence.n)
 }
 func dockerArgs(p Plan, name string) []string {
+	if validLint(p) {
+		return lintDockerArgs(p, name)
+	}
 	l := p.Limits
 	args := []string{"run", "--name", name, "--pull=never", "--network=none", "--read-only", "--user=65534:65534", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--memory", fmt.Sprint(l.MemoryBytes), "--memory-swap", fmt.Sprint(l.MemoryBytes), "--cpus", fmt.Sprint(l.CPUs), "--pids-limit", fmt.Sprint(l.PIDs), "--tmpfs", fmt.Sprintf("/tmp:rw,noexec,nosuid,nodev,size=%d", l.ScratchBytes), "--entrypoint", "/ci-trust/owned-smoke", p.Image, "--fixture=smoke-v1", "--config=" + p.Config}
 	if p.Transport == splitStdin {
