@@ -32,10 +32,9 @@ func buildOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, ta
 	if err != nil {
 		return nil, err
 	} // context/seal/seed guards precede filesystem access.
-	invalid := func() error { return NewValidationFailure("") }
 	limit := func() error { return NewValidationFailure("rootfs-limit") }
 	if !filepath.IsAbs(target) || limits.files < 0 || limits.visited < 1 || limits.bytes < 0 {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-target")
 	}
 	names, err := imageNames(out)
 	if err != nil {
@@ -59,29 +58,29 @@ func buildOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, ta
 	}
 	st, err := os.Lstat(target)
 	if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-target")
 	}
 	targetRoot, err := os.OpenRoot(target)
 	if err != nil {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-target")
 	}
 	defer targetRoot.Close()
 	opened, err := targetRoot.Stat(".")
 	if err != nil || !os.SameFile(st, opened) {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-target")
 	}
 	st, err = targetRoot.Lstat("node_modules")
 	if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-modules")
 	}
 	root, err := targetRoot.OpenRoot("node_modules")
 	if err != nil {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-modules")
 	}
 	defer root.Close()
 	opened, err = root.Stat(".")
 	if err != nil || !os.SameFile(st, opened) {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-modules")
 	}
 	files, visited := 0, 0
 	var total int64
@@ -104,24 +103,24 @@ func buildOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, ta
 		}
 		clean, e := SafePath(name)
 		if e != nil || clean != name {
-			return invalid()
+			return NewValidationFailure("rootfs-entry-path")
 		}
 		info, e := root.Lstat(filepath.FromSlash(rel))
 		if e != nil || info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
-			return invalid()
+			return NewValidationFailure("rootfs-entry-type")
 		}
 		f, e := root.Open(filepath.FromSlash(rel))
 		if e != nil {
-			return invalid()
+			return NewValidationFailure("rootfs-entry-access")
 		}
 		defer func() {
 			if e := f.Close(); err == nil && e != nil {
-				err = invalid()
+				err = NewValidationFailure("rootfs-entry-access")
 			}
 		}()
 		actual, e := f.Stat()
 		if e != nil || !os.SameFile(info, actual) || actual.Mode().Type() != info.Mode().Type() {
-			return invalid()
+			return NewValidationFailure("rootfs-entry-access")
 		}
 		if info.IsDir() {
 			for {
@@ -130,7 +129,7 @@ func buildOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, ta
 				}
 				batch, e := f.ReadDir(32)
 				if e != nil && e != io.EOF {
-					return invalid()
+					return NewValidationFailure("rootfs-entry-access")
 				}
 				for _, entry := range batch {
 					child := entry.Name()
@@ -151,18 +150,18 @@ func buildOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, ta
 		}
 		files++
 		if _, exists := out[name]; exists {
-			return invalid()
+			return NewValidationFailure("rootfs-entry-collision")
 		}
 		// Only seed entries can be descendants of an incoming regular file.
 		// Sorted prefix lookup avoids scanning the complete Tree per file.
 		i := sort.SearchStrings(names, name+"/")
 		if i < len(names) && strings.HasPrefix(names[i], name+"/") {
-			return invalid()
+			return NewValidationFailure("rootfs-file-ancestor")
 		}
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
 			if n, ok := out[parent]; ok {
 				if n.Kind != "dir" {
-					return invalid()
+					return NewValidationFailure("rootfs-parent-type")
 				}
 			} else if err := add(parent, Node{Kind: "dir", Mode: 0555}); err != nil {
 				return err
@@ -186,7 +185,7 @@ func buildOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, ta
 			return err
 		}
 		if (readErr != io.EOF && readErr != io.ErrUnexpectedEOF) || int64(n) != actual.Size() {
-			return invalid()
+			return NewValidationFailure("rootfs-entry-read")
 		}
 		total += int64(n)
 		payload += int64(n)
@@ -228,10 +227,9 @@ func seedOwnedRootfs(ctx context.Context, base Tree, bundle *NodeBundle, launche
 // Private tiny-limit seam: the byte cap applies separately to payload and path/
 // target metadata, matching the normalized Tree packing precondition.
 func seedOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, launcher, module []byte, files int, byteLimit int64) (Tree, error) {
-	invalid := func() error { return NewValidationFailure("") }
 	limit := func() error { return NewValidationFailure("rootfs-limit") }
 	if bundle == nil || !bundle.sealed || len(bundle.entries) == 0 || len(bundle.entries) > MaxFiles {
-		return nil, invalid()
+		return nil, NewValidationFailure("rootfs-bundle")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -245,18 +243,21 @@ func seedOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, lau
 		switch e.name {
 		case nodeBundlePrefix + "/bin/node":
 			if e.kind != tar.TypeReg || foundNode {
-				return nil, invalid()
+				return nil, NewValidationFailure("rootfs-node")
 			}
 			node, foundNode = e.data, true
 		case nodeBundlePrefix + "/LICENSE":
 			if e.kind != tar.TypeReg || foundLicense {
-				return nil, invalid()
+				return nil, NewValidationFailure("rootfs-license")
 			}
 			license, foundLicense = e.data, true
 		}
 	}
-	if !foundNode || !foundLicense {
-		return nil, invalid()
+	if !foundNode {
+		return nil, NewValidationFailure("rootfs-node")
+	}
+	if !foundLicense {
+		return nil, NewValidationFailure("rootfs-license")
 	}
 	if files < 0 || byteLimit < 0 || len(base) > files {
 		return nil, limit()
@@ -281,11 +282,11 @@ func seedOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, lau
 		}
 		switch path.Base(name) {
 		case "sh", "bash", "dash", "npm", "npx", "gcc", "cc", "python", "python3":
-			return nil, invalid()
+			return nil, NewValidationFailure("rootfs-base-banned")
 		}
 		for _, addition := range additions {
 			if strings.HasPrefix(name, addition.name+"/") {
-				return nil, invalid()
+				return nil, NewValidationFailure("rootfs-seed-descendant")
 			}
 		}
 		if name == "work" {
@@ -327,14 +328,14 @@ func seedOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, lau
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
 			if old, ok := out[parent]; ok {
 				if old.Kind != "dir" {
-					return invalid()
+					return NewValidationFailure("rootfs-seed-parent")
 				}
 			} else if err := insert(parent, Node{Kind: "dir", Mode: 0555}); err != nil {
 				return err
 			}
 		}
 		if _, exists := out[name]; exists {
-			return invalid()
+			return NewValidationFailure("rootfs-seed-collision")
 		}
 		return insert(name, Node{Kind: "file", Mode: mode, Data: data})
 	}

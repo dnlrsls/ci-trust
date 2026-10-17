@@ -20,6 +20,7 @@ Downloads pinned Node/base data and runs fixed Node/npm dependency setup only.
 No package scripts, ESLint, launcher, Docker or target execution; not runtime admission.
 Use only in a separately authorized fresh protected hosted job.
 Source/run metadata are recorded, not authenticated. Success is silent.
+Failures use fixed stage/category and optional redacted reason identifiers.
 `
 const invalidDiagnostic = "owned lint preparation failed; stage=host-inputs; category=validation; no runtime admission or ESLint execution\n"
 const unexpectedDiagnostic = "owned lint preparation failed; stage=host-inputs; category=unexpected; no runtime admission or ESLint execution\n"
@@ -125,6 +126,36 @@ func TestRun(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRunRootfsReasons(t *testing.T) {
+	for _, reason := range []string{
+		"rootfs-launcher", "rootfs-bundle", "rootfs-node", "rootfs-license",
+		"rootfs-base-banned", "rootfs-seed-descendant", "rootfs-seed-parent", "rootfs-seed-collision",
+		"rootfs-target", "rootfs-modules", "rootfs-entry-path", "rootfs-entry-type", "rootfs-entry-access",
+		"rootfs-entry-collision", "rootfs-file-ancestor", "rootfs-parent-type", "rootfs-entry-read",
+		"private/path?token=private\nrootfs-entry-type",
+	} {
+		t.Run(reason, func(t *testing.T) {
+			var out, errout bytes.Buffer
+			envCalls, prepareCalls := 0, 0
+			code := run(context.Background(), nil, &out, &errout,
+				func(string) string { envCalls++; return "private environment" },
+				func(context.Context, string, string, string, string) error {
+					prepareCalls++
+					// Public error fields are revalidated; joined raw context is never printed.
+					return errors.Join(errors.New("private raw URL/process/path"), &lintpreparation.PreparationFailure{Stage: "rootfs", Category: "validation", Reason: reason})
+				})
+			want := "owned lint preparation failed; stage=rootfs; category=validation"
+			if !bytes.Contains([]byte(reason), []byte("private")) {
+				want += "; reason=" + reason
+			}
+			want += "; no runtime admission or ESLint execution\n"
+			if code != 1 || out.Len() != 0 || errout.String() != want || envCalls != 4 || prepareCalls != 1 {
+				t.Fatalf("code=%d stdout=%q stderr=%q env=%d prepare=%d; want stderr=%q", code, out.String(), errout.String(), envCalls, prepareCalls, want)
+			}
+		})
+	}
 }
 
 type brokenWriter struct{ short bool }

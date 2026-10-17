@@ -60,7 +60,12 @@ func prepareWith(ctx context.Context, workspace, sourceRevision, runID, runAttem
 		var e error
 		launcher, e = s.fs.launcher(ctx, MaxBytes)
 		if e != nil {
-			return e
+			staged := InStage("rootfs", func() error { return e })
+			var failure *PreparationFailure
+			if errors.As(staged, &failure) && failure.Reason == "" {
+				return NewPreparationFailure(failure.Stage, failure.Category, "rootfs-launcher")
+			}
+			return staged
 		}
 		tree, e = d.rootfs(ctx, base, s.bundle, s.target, launcher, s.inputs.module)
 		return e

@@ -20,6 +20,7 @@ Downloads pinned Node/base data and runs fixed Node/npm dependency setup only.
 No package scripts, ESLint, launcher, Docker or target execution; not runtime admission.
 Use only in a separately authorized fresh protected hosted job.
 Source/run metadata are recorded, not authenticated. Success is silent.
+Failures use fixed stage/category and optional redacted reason identifiers.
 `
 
 type preparer func(context.Context, string, string, string, string) error
