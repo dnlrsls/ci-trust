@@ -7,7 +7,41 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/dnlrsls/ci-trust/internal/lintpreparation"
 )
+
+// Check only public source layout, never private archives or Git history.
+func TestGoPreparationRetiresLegacySources(t *testing.T) {
+	dir := filepath.Join("..", "..", "tools", "lint-preparation")
+	manifest := filepath.Join(dir, "package.json")
+	info, err := os.Lstat(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatal("owned manifest must be a regular file")
+	}
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lintpreparation.ValidateOwnedManifest(data); err != nil {
+		t.Fatal("unexpected owned manifest", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != "package.json" {
+			t.Errorf("legacy or unexpected preparation source remains: %s", entry.Name())
+		}
+	}
+	if len(entries) != 1 {
+		t.Errorf("preparation source directory must contain only package.json; got %d entries", len(entries))
+	}
+}
 
 func TestPortableGoCICoversPreparationWithoutPython(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "test.yml"))
