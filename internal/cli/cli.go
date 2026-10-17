@@ -15,11 +15,13 @@ import (
 	"github.com/dnlrsls/ci-trust/internal/evidence"
 )
 
-// Services keeps command parsing independent of the audit implementation.
-// Audit must redact known secrets before returning schema-v1 report bytes.
+// Services keeps parsing independent of trusted report producers. Audit and
+// Verify must redact known secrets before returning schema-v1 bytes. Verify is
+// not approval or runtime authority; production composes only the held service.
 type Services struct {
 	Bootstrap        func(string, []string) (bootstrap.Plan, error)
 	Audit            func(string, []string) ([]byte, error)
+	Verify           func(string) ([]byte, error)
 	Version          string
 	InteractiveInput bool
 }
@@ -28,13 +30,14 @@ const auditUsage = "ci-trust audit PATH [--format human|json] [--platform linux|
 const reportUsage = "ci-trust report [--input FILE|-] [--format human|json]\n"
 const effects = "Offline/read-only: no execution, network, hidden storage, or writes.\nExit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.\n"
 const bootstrapUsage = "ci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]\nDry-run only: no apply behavior; conditional drafts are not executed or enforced.\n"
-const usage = auditUsage + reportUsage + bootstrapUsage + "ci-trust --help\nci-trust --version\n" + effects
+const verifyUsage = "ci-trust verify PATH --check lint [--format human|json]\nOwned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
+const usage = auditUsage + reportUsage + bootstrapUsage + verifyUsage + "ci-trust --help\nci-trust --version\n" + effects
 const maxInput = 8 << 20
 
 type invocation struct {
 	command, path, input, format string
 	platforms                    []string
-	dryRun                       bool
+	dryRun, lint                 bool
 }
 
 func parse(args []string) (invocation, bool) {
@@ -43,7 +46,7 @@ func parse(args []string) (invocation, bool) {
 		return v, false
 	}
 	v.command = args[0]
-	if v.command != "audit" && v.command != "report" && v.command != "bootstrap" {
+	if v.command != "audit" && v.command != "report" && v.command != "bootstrap" && v.command != "verify" {
 		return v, false
 	}
 	seen := map[string]bool{}
@@ -63,7 +66,7 @@ func parse(args []string) (invocation, bool) {
 				v.dryRun = true
 				continue
 			}
-			if a != "--format" && !(a == "--platform" && v.command != "report") && !(a == "--input" && v.command == "report") {
+			if a != "--format" && !(a == "--platform" && (v.command == "audit" || v.command == "bootstrap")) && !(a == "--input" && v.command == "report") && !(a == "--check" && v.command == "verify") {
 				return v, false
 			}
 			if i+1 >= len(args) {
@@ -79,6 +82,11 @@ func parse(args []string) (invocation, bool) {
 			}
 			seen[a] = true
 			switch a {
+			case "--check":
+				if value != "lint" {
+					return v, false
+				}
+				v.lint = true
 			case "--format":
 				if value != "human" && value != "json" {
 					return v, false
@@ -100,10 +108,10 @@ func parse(args []string) (invocation, bool) {
 			v.path = a
 		}
 	}
-	return v, (v.command == "report" || v.path != "") && (v.command != "bootstrap" || v.dryRun)
+	return v, (v.command == "report" || v.path != "") && (v.command != "bootstrap" || v.dryRun) && (v.command != "verify" || v.lint)
 }
 
-// Run validates the entire invocation before reading input or invoking Audit.
+// Run validates the entire invocation before reading input or invoking a producer.
 // Exit codes are 0 for valid data, 1 for operational failure, 2 for usage.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Services) int {
 	fail := func(message string) int { fmt.Fprintln(stderr, "ci-trust: "+message); return 1 }
@@ -136,6 +144,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Serv
 			return write([]byte(reportUsage + effects))
 		case "bootstrap":
 			return write([]byte(bootstrapUsage + effects))
+		case "verify":
+			return write([]byte(verifyUsage + effects))
 		}
 	}
 	v, ok := parse(args)
@@ -162,7 +172,15 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Serv
 	}
 	var data []byte
 	var err error
-	if v.command == "audit" {
+	if v.command == "verify" {
+		if services.Verify == nil {
+			return fail("lint verification service unavailable")
+		}
+		data, err = services.Verify(v.path)
+		if err != nil {
+			return fail("lint verification failed")
+		}
+	} else if v.command == "audit" {
 		if services.Audit == nil {
 			return fail("audit service unavailable")
 		}
