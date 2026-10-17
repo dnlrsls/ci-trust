@@ -24,11 +24,21 @@ cannot produce positive efficacy. Post-capture source measurement also runs on
 failure. Private fake dependencies are test-only; no live review channel or
 runtime factory is composed in production.
 
-Current units: catalog/plan/gate and simulated triplet orchestration. The public
-`verify PATH --check lint` surface and evidence-v1 mapping remain a subsequent
-local unit. Existing smoke runner and human review authentication are unchanged
-and do not authorize lint. The private decision expiry/cleanup flags are assertions
-from a future trusted adapter, not authentication or observed isolation by themselves.
+The bounded `lintverify.Scan` service now composes the existing audit snapshot
+with lint-specific evidence-v1 reporting. Production returns UNVERIFIABLE, never
+fabricated execution or efficacy. A recognized ESLint declaration document may
+anchor a lint CHECK; without a genuine anchor, only a diagnostic and limitations
+are added, not an imaginary source path or capability. Executable configuration,
+embedded project ESLint configuration and declared plugins are not loaded and
+produce `UNSUPPORTED_LINT_CONFIGURATION`. Repository efficacy, execution and
+CI enforcement are not upgraded by owned fixture observations.
+
+Private tests map simulated complete triplets to TOOL_FIXTURE-only v1 capability
+records. Those tests are not observed execution evidence. The public
+`verify PATH --check lint` command wiring remains the next local unit. Existing
+smoke runner and human review authentication are unchanged and do not authorize
+lint. The private decision expiry/cleanup flags are assertions from a future
+trusted adapter, not authentication or observed isolation by themselves.
 
 No Node, npm, ESLint, owned launcher, loader or Docker execution is established
 or authorized here. Synthetic tests cannot establish real sensitivity, Linux
