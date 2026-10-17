@@ -7,7 +7,152 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 )
+
+// Acquisition effects are private fixture seams, never caller configuration.
+type acquisitionEffects struct {
+	goos, goarch string
+	open         func(string) (*preparationFS, error)
+	download     func(context.Context, string, string, string) ([]byte, error)
+	decode       func(context.Context, []byte) (*NodeBundle, error)
+	materialize  func(context.Context, *NodeBundle, string) (string, error)
+	install      func(context.Context, string, string, string) ([]string, []byte, error)
+	finish       func(*preparationFS) error
+}
+type acquiredPreparation struct {
+	fs                           *preparationFS
+	inputs                       preparationInputs
+	bundle                       *NodeBundle
+	temp, nodeRoot, target, home string
+	manifest, lock               []byte
+	flags                        []string
+	close                        func(*preparationFS) error
+}
+
+// Success transfers ownership to C2b, which MUST defer finish on every return.
+// Failure transfers nothing. Neither success nor this state is runtime admission.
+func (s *acquiredPreparation) finish() error {
+	return InStage("host-inputs", func() error { return s.close(s.fs) })
+}
+func fixedAcquisitionEffects() acquisitionEffects {
+	return acquisitionEffects{runtime.GOOS, runtime.GOARCH, openPreparationFS, Download, DecodeNodeBundle, MaterializeNodeBundle, installNPM, (*preparationFS).finish}
+}
+func acquirePreparation(ctx context.Context, workspace string) (*acquiredPreparation, error) {
+	return acquirePreparationWith(ctx, workspace, fixedAcquisitionEffects())
+}
+
+// Roots are caller-trusted/stable; no hostile-root, mount or host isolation.
+// Private synthetic effects are never exposed as public host/pin/process knobs.
+func acquirePreparationWith(ctx context.Context, workspace string, d acquisitionEffects) (result *acquiredPreparation, err error) {
+	s := &acquiredPreparation{close: d.finish}
+	run := func(stage string, f func() error) error {
+		return InStage(stage, func() error {
+			if e := baseContextFailure(ctx, stage); e != nil {
+				return e
+			}
+			return f()
+		})
+	}
+	err = run("host-inputs", func() error {
+		if d.goos != "linux" || d.goarch != "amd64" {
+			return NewValidationFailure("platform")
+		}
+		if d.open == nil || d.download == nil || d.decode == nil || d.materialize == nil || d.install == nil || d.finish == nil {
+			return NewValidationFailure("")
+		}
+		// Resolve only syntactically; no ambient credentials/configuration are read.
+		workspace, e := filepath.Abs(workspace)
+		if e != nil {
+			return e
+		}
+		s.fs, e = d.open(workspace)
+		return e
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, s.finish())
+			result = nil
+		}
+	}()
+	err = run("host-inputs", func() error {
+		var e error
+		s.inputs, e = s.fs.inputs(ctx, MaxBytes)
+		if e != nil {
+			return e
+		}
+		s.temp, e = s.fs.claimTemp(ctx)
+		return e
+	})
+	if err != nil {
+		return nil, err
+	}
+	var archive []byte
+	err = run("node-download", func() error {
+		var e error
+		archive, e = d.download(ctx, "node-download", "https://nodejs.org/dist/v"+NodeVersion+"/"+NodeArchive, "sha256:"+NodeSHA256)
+		return e
+	})
+	if err != nil {
+		return nil, err
+	}
+	err = run("node-extract", func() error {
+		var e error
+		s.bundle, e = d.decode(ctx, archive)
+		if e != nil {
+			return e
+		}
+		if e = baseContextFailure(ctx, "node-extract"); e != nil {
+			return e
+		}
+		s.nodeRoot, e = d.materialize(ctx, s.bundle, s.temp)
+		return e
+	})
+	if err != nil {
+		return nil, err
+	}
+	err = run("owned-manifest", func() (e error) {
+		s.manifest, e = s.fs.manifest(ctx, MaxBytes)
+		if e != nil {
+			return e
+		}
+		r, e := s.fs.prep.OpenRoot(s.fs.temp)
+		if e != nil {
+			return e
+		}
+		defer func() { e = errors.Join(e, r.Close()) }()
+		for _, name := range []string{"owned", "home"} {
+			if e = baseContextFailure(ctx, "owned-manifest"); e != nil {
+				return e
+			}
+			if e = r.Mkdir(name, 0700); e != nil {
+				return e
+			}
+		}
+		s.target = filepath.Join(s.temp, "owned")
+		s.home = filepath.Join(s.temp, "home")
+		return writePreparationFile(ctx, r, "owned/package.json", s.manifest)
+	})
+	if err != nil {
+		return nil, err
+	}
+	err = run("npm-setup", func() error {
+		var e error
+		s.flags, s.lock, e = d.install(ctx, s.nodeRoot, s.target, s.home)
+		return e
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Late cancellation must not hand off an apparently successful acquisition.
+	if err = baseContextFailure(ctx, "npm-setup"); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
 
 var preparationArtifactNames = []string{"image.tar", "package.json", "package-lock.json", "inventory.json", "owned-inputs.json", "preparation.json", "SHA256SUMS"}
 
