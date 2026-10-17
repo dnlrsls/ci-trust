@@ -67,7 +67,11 @@ A failed diagnostic write gets no secondary raw-error fallback.
 
 ## Migration status and gates
 
-The existing workflow still uses Python until the separate workflow-cutover
-unit. Adding this command does not dispatch a workflow, authorize execution,
-retire Python or complete the migration's independent source verification.
+The protected workflow source now tests the Go preparation subtree offline, then
+compiles the launcher and fixed preparation binary before invoking the binary
+under its 600-second deadline. This source change has not executed the workflow
+or fully accepted the migration. Legacy Python source/tests remain pending
+independent replacement validation. Neither the command nor the source cutover
+dispatches a workflow, authorizes execution, retires Python or completes the
+migration's independent source verification.
 See [lint image preparation](lint-image-preparation.md) for the separate gates.
