@@ -26,9 +26,13 @@ Windows and macOS. No host/SSH session or image registry write is needed.
 
 The compiled preparation binary runs directly under a 600-second TERM deadline
 with a ten-second kill grace; compilation happens before that deadline. See the
-[CLI guide](owned-lint-prepare-cli.md) for inputs, outputs and safe help. This is a
-source cutover only, not an executed or fully accepted migration. Legacy Python
-source/tests remain pending independent replacement validation.
+[CLI guide](owned-lint-prepare-cli.md) for inputs, outputs and safe help. The local
+Go source migration is complete: the legacy Python preparer/tests are retired,
+while the owned npm manifest remains. Supporting source review and synthetic/
+offline tests do not demonstrate hosted preparation success, actual-pin format
+compatibility, Linux permissions/ACL behavior, Python parity, runtime/library
+closure or independent reproduction. No native approval or execution consent is
+claimed; the separate admission gates below remain unchanged.
 
 ## Allowed effects
 

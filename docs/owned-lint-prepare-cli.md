@@ -69,9 +69,11 @@ A failed diagnostic write gets no secondary raw-error fallback.
 
 The protected workflow source now tests the Go preparation subtree offline, then
 compiles the launcher and fixed preparation binary before invoking the binary
-under its 600-second deadline. This source change has not executed the workflow
-or fully accepted the migration. Legacy Python source/tests remain pending
-independent replacement validation. Neither the command nor the source cutover
-dispatches a workflow, authorizes execution, retires Python or completes the
-migration's independent source verification.
+under its 600-second deadline. The local Go source migration is complete; the
+legacy Python preparer/tests are retired and the owned npm manifest is retained.
+Source review and synthetic/offline validation do not establish hosted production
+success, actual-pin format compatibility, Linux permissions/ACL behavior, Python
+parity, runtime/library closure, independent reproduction or native approval.
+Neither the command nor source retirement dispatches a workflow or authorizes
+execution; all separate admission gates remain.
 See [lint image preparation](lint-image-preparation.md) for the separate gates.
