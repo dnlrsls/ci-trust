@@ -35,9 +35,11 @@ CI enforcement are not upgraded by owned fixture observations.
 
 Private tests map simulated complete triplets to TOOL_FIXTURE-only v1 capability
 records. Those tests are not observed execution evidence. The public
-`verify PATH --check lint` command wiring remains the next local unit. Existing
-smoke runner and human review authentication are unchanged and do not authorize
-lint. The private decision expiry/cleanup flags are assertions from a future
+`verify PATH --check lint` now composes only this held service and the existing v1
+renderer; it does not accept approval flags, input captures or caller-selected
+commands. Valid unresolved reports exit 0, not a sensitivity PASS. Invocation
+validation precedes producers and input reads. Existing smoke runner and human
+review authentication are unchanged and do not authorize lint. The private decision expiry/cleanup flags are assertions from a future
 trusted adapter, not authentication or observed isolation by themselves.
 
 No Node, npm, ESLint, owned launcher, loader or Docker execution is established

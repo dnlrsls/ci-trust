@@ -19,6 +19,7 @@ go build -o ci-trust ./cmd/ci-trust
 ./ci-trust --version
 ./ci-trust audit PATH --format json > audit.json
 ./ci-trust report --input audit.json --format human
+./ci-trust verify PATH --check lint --format json # currently UNVERIFIABLE; no tool execution
 ```
 
 On Windows build `ci-trust.exe` and invoke `./ci-trust.exe`. The development version
@@ -36,6 +37,9 @@ No installation or licensed release/distribution is claimed.
 - `bootstrap PATH --dry-run` emits [conditional workflow proposals](docs/bootstrap.md),
   human by default or `--format json`. It never applies changes; missing runtime
   and dependency preparation remain explicit preconditions, not invented setup.
+- `verify PATH --check lint` exposes [gated owned-fixture reporting](docs/lint-offline-integration.md).
+  Production remains UNVERIFIABLE: Node hold and unadmitted runtime block execution;
+  no project configuration/plugin is loaded and no real lint sensitivity is claimed.
 - Exit **0** means valid report/plan (including findings/FAIL/UNKNOWN), help or version;
   **1** means operational failure; **2** means invalid invocation. Report input is
   bounded to 8 MiB; interactive stdin is refused.
@@ -58,9 +62,10 @@ or enforcement evidence for the workflows it audits.
 
 ## Future work and safety
 
-`verify` is not implemented. Controlled verification
-requires explicit target-bound consent and bounded isolation; no production Docker
-backend or trusted image/catalog is available. There is no host-shell fallback.
+`verify --check lint` now reports its closed execution gate; it does not run ESLint.
+Actual lint execution still requires a separately admitted runtime/image, exact
+human consent and bounded isolation. The smoke/proof backend does not authorize
+lint, and no trusted production lint catalog is available. There is no host-shell fallback.
 Bootstrap is evidence-backed conditional dry-run recommendations only, never apply.
 The older [native audit receipt](docs/portable-ci.md) does not establish execution
 of this later bootstrap implementation; new source requires its own verification.

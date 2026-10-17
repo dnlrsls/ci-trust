@@ -1,4 +1,4 @@
-// Command ci-trust audits local configuration without executing target code.
+// Command ci-trust reports configuration and gated lint without executing target code.
 package main
 
 import (
@@ -7,6 +7,7 @@ import (
 	"github.com/dnlrsls/ci-trust/internal/audit"
 	"github.com/dnlrsls/ci-trust/internal/bootstrap"
 	"github.com/dnlrsls/ci-trust/internal/cli"
+	"github.com/dnlrsls/ci-trust/internal/lintverify"
 	"golang.org/x/term"
 )
 
@@ -21,6 +22,7 @@ func main() {
 		Bootstrap: func(path string, platforms []string) (bootstrap.Plan, error) {
 			return bootstrap.Scan(path, bootstrap.Options{Platforms: platforms})
 		},
+		Verify:           lintverify.Scan,
 		Version:          version,
 		InteractiveInput: term.IsTerminal(int(os.Stdin.Fd())),
 	}))

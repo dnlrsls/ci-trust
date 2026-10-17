@@ -1,4 +1,4 @@
-# Audit, report and conditional bootstrap CLI contract
+# Audit, report, bootstrap and gated lint CLI contract
 
 `cmd/ci-trust` binds the offline audit producer to `internal/cli` and implements
 the commands below. Local public-binary tests cover report file/stdin parity,
@@ -17,6 +17,9 @@ ci-trust audit PATH [--format human|json] [--platform linux|windows|macos ...]
 ci-trust report [--input FILE|-] [--format human|json]
 ci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]
 Dry-run only: no apply behavior; conditional drafts are not executed or enforced.
+ci-trust verify PATH --check lint [--format human|json]
+Owned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).
+TOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.
 ci-trust --help
 ci-trust --version
 ```
@@ -26,11 +29,31 @@ repeated platform values are rejected. Explicit values override declaration poli
 through the injected audit callback. No implicit cwd audit exists. Report defaults
 to stdin and human format, never rescans and needs no source repository.
 `--help` or `help` alone after a subcommand shows its help. `help audit` and
-`help report` and `help bootstrap` also work. Other mixtures of help/options are invalid.
+`help report`, `help bootstrap` and `help verify` also work. Other mixtures of help/options are invalid.
+
+## Gated lint verification
+
+`verify PATH --check lint` reads bounded recognized source data and returns the
+existing v1 report in human or JSON format. Both PATH and exactly one literal
+`--check lint` are mandatory. No `--approve`, caller commands, plugins, input
+reports or platform overrides are accepted. `--check` is not an audit/report/
+bootstrap option. For option-looking PATH values, put options before `-- PATH`.
+
+Production is **UNVERIFIABLE**, not sensitivity success: Node security hold and
+unadmitted catalog remain closed before review/runtime access. Unsupported project
+configuration/plugins are not loaded and yield an explicit diagnostic. A missing
+genuine declaration anchor never creates a fictional CHECK. TOOL_FIXTURE output
+cannot establish project efficacy, historical CI execution or enforcement.
+
+A valid unresolved report exits 0; this is not execution approval. Real sensitivity
+requires separately authenticated exact-plan consent/preflight and ordered CLEAN
+exit0, FAULT exit1 with `no-debugger` error at1:1, RESTORED exit0 under an admitted
+runtime. The command currently cannot run that sequence. Private simulated tests
+and the internal launcher do not admit it. See [integration limits](lint-offline-integration.md).
 
 ## Pinned text and rendering
 
-Root help is the invocation/help lines and bootstrap dry-run notice above followed by:
+Root help is the invocation/help lines, bootstrap dry-run notice and verify gate/scope notice above followed by:
 
 ```
 Offline/read-only: no execution, network, hidden storage, or writes.
@@ -38,7 +61,7 @@ Exit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational erro
 ```
 
 Subcommand help is its invocation line followed by those same two lines;
-bootstrap additionally includes its dry-run/no-apply notice.
+bootstrap additionally includes its dry-run/no-apply notice; verify includes its gate/scope notice.
 Version is `ci-trust VERSION\n` (Go-quoted VERSION, including quotes, to
 escape untrusted control characters).
 
@@ -67,7 +90,7 @@ All invocation failures have empty stdout and exactly
 formats and platforms are validated before callback or report input access.
 Duplicate singleton options, unknown options, extra paths and empty values fail.
 Paths may contain spaces/Unicode, but option-looking paths must use `-- PATH`.
-`--` ends audit/bootstrap options; put `--dry-run` before it for bootstrap.
+`--` ends audit/bootstrap/verify options; put `--dry-run` before it for bootstrap and `--check lint` before it for verify.
 
 Operational failures have empty stdout, exit 1, and exactly one of:
 
@@ -77,6 +100,8 @@ ci-trust: bootstrap service unavailable
 ci-trust: bootstrap failed
 ci-trust: invalid bootstrap plan
 ci-trust: audit failed
+ci-trust: lint verification service unavailable
+ci-trust: lint verification failed
 ci-trust: report input required (interactive stdin)
 ci-trust: cannot open report input
 ci-trust: cannot read report input
@@ -85,7 +110,7 @@ ci-trust: invalid report
 ci-trust: cannot write output
 ```
 
-Report stdin/file input and injected audit bytes are bounded to 8 MiB. Empty,
+Report stdin/file input and injected audit/verify report bytes are bounded to 8 MiB. Empty,
 malformed, duplicate-key, unsupported-version, schema-invalid and semantically
 inadmissible data fail before output. Interactive stdin (including explicit `-`)
 is refused without reading. Findings, FAIL and UNKNOWN are valid data, exit 0.
@@ -115,11 +140,13 @@ source report, relative destinations and reference existence; the input artifact
 bound is 8 MiB. No source file is created or replaced, even on a conflict.
 See [supported templates and action-pin policy](bootstrap.md).
 
-## Future design, not implemented
+## Execution remains unavailable
 
-`verify PATH --check lint` requires separately specified target-bound consent and
-pre-provisioned bounded isolation; no unsafe yes flag or host-shell fallback.
-It currently returns invalid invocation (2). Bootstrap is implemented only as
-conditional dry-run proposals, never apply.
+`verify PATH --check lint` is implemented as gated, read-only reporting. A valid
+UNVERIFIABLE report exits 0; invalid arguments exit 2 and operational failures
+exit 1. Real lint execution still requires separately authenticated target-bound
+consent, an admitted runtime and pre-provisioned bounded isolation. There is no
+unsafe yes flag or host-shell fallback. Bootstrap remains conditional dry-run
+proposals, never apply.
 No validators, hooks, scripts, package managers, actions, shell/eval, network,
 credentials or hidden report storage are used by this layer.
