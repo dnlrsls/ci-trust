@@ -11,6 +11,252 @@ import (
 	"testing"
 )
 
+func TestPrepare(t *testing.T) {
+	ctx := context.Background()
+	t.Run("fixed defaults without invoking production", func(t *testing.T) {
+		d := fixedPreparationEffects()
+		for _, pair := range [][2]any{{d.acquire, acquirePreparation}, {d.base, LoadBase}, {d.rootfs, buildOwnedRootfs}, {d.artifacts, buildArtifacts}} {
+			if reflect.ValueOf(pair[0]).Pointer() != reflect.ValueOf(pair[1]).Pointer() {
+				t.Fatal("fixed completion binding")
+			}
+		}
+	})
+	t.Run("cancel before acquisition and acquisition failure", func(t *testing.T) {
+		c, cancel := context.WithCancel(ctx)
+		cancel()
+		calls := 0
+		d := preparationEffects{acquire: func(context.Context, string) (*acquiredPreparation, error) {
+			calls++
+			return nil, NewPreparationFailure("node-download", "network", "")
+		}}
+		if e := prepareWith(c, "no workspace", "rev", "run", "attempt", d); e == nil || calls != 0 {
+			t.Fatal("cancel before effects", e, calls)
+		}
+		e := prepareWith(ctx, "no workspace", "rev", "run", "attempt", d)
+		var f *PreparationFailure
+		if !errors.As(e, &f) || f.Stage != "node-download" || calls != 1 {
+			t.Fatal("acquisition error changed", e, calls)
+		}
+	})
+	for _, fail := range []string{"", "base", "base-inner", "launcher", "rootfs", "artifacts", "artifacts-inner", "output", "cancel", "output-cancel", "cleanup", "primary-cleanup"} {
+		t.Run("completion/"+fail, func(t *testing.T) {
+			w, p := preparationFixture(t)
+			prep := filepath.Join(w, ".git/lint-image-preparation")
+			inputBytes, e := os.ReadFile(filepath.Join(prep, "inputs.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			var calls []string
+			var s *acquiredPreparation
+			closed := 0
+			c, cancel := context.WithCancel(ctx)
+			defer cancel()
+			base := Tree{"base": Node{Kind: "file", Mode: 0444, Data: []byte("base")}}
+			baseManifest := map[string]any{"layers": []any{map[string]any{"digest": "synthetic"}}, "extra": "retained"}
+			lock := []byte("frozen-lock")
+			flags := []string{"fixed flags"}
+			bundle := &NodeBundle{sealed: true}
+			output := map[string][]byte{}
+			for _, n := range preparationArtifactNames {
+				output[n] = []byte("synthetic payload: " + n)
+			}
+			sentinel := filepath.Join(prep, "artifacts/sentinel")
+			if fail == "output" {
+				if e = os.Mkdir(filepath.Dir(sentinel), 0700); e != nil {
+					t.Fatal(e)
+				}
+				if e = os.WriteFile(sentinel, []byte("preserved"), 0600); e != nil {
+					t.Fatal(e)
+				}
+			}
+			inner := NewPreparationFailure("base-layer-diff", "validation", "layer-diff-id")
+			d := preparationEffects{}
+			d.acquire = func(_ context.Context, workspace string) (*acquiredPreparation, error) {
+				calls = append(calls, "acquire")
+				if workspace != w {
+					t.Fatal("workspace binding")
+				}
+				in, e := p.inputs(ctx, 1024)
+				if e != nil {
+					t.Fatal(e)
+				}
+				temp, e := p.claimTemp(ctx)
+				if e != nil {
+					t.Fatal(e)
+				}
+				target := filepath.Join(temp, "owned")
+				if e = os.Mkdir(target, 0700); e != nil {
+					t.Fatal(e)
+				}
+				s = &acquiredPreparation{fs: p, inputs: in, bundle: bundle, temp: temp, nodeRoot: filepath.Join(temp, nodeBundlePrefix), target: target, manifest: []byte(preparationManifest), lock: lock, flags: flags}
+				s.close = func(fs *preparationFS) error {
+					calls = append(calls, "finish")
+					closed++
+					e := fs.finish()
+					if fail == "cleanup" || fail == "primary-cleanup" {
+						return errors.Join(e, os.ErrPermission)
+					}
+					return e
+				}
+				return s, nil
+			}
+			d.base = func(context.Context) (Tree, map[string]any, error) {
+				calls = append(calls, "base")
+				if fail == "base" || fail == "primary-cleanup" {
+					return nil, nil, errors.New("private base detail")
+				}
+				if fail == "base-inner" {
+					return nil, nil, inner
+				}
+				// A launcher can become available only after base retrieval: not eager.
+				name := filepath.Join(prep, "owned-eslint")
+				if fail == "launcher" {
+					if e := os.Rename(name, name+".saved"); e != nil {
+						t.Fatal(e)
+					}
+				} else if e := os.WriteFile(name, []byte("rootfs launcher"), 0600); e != nil {
+					t.Fatal(e)
+				}
+				return base, baseManifest, nil
+			}
+			var assembled Tree
+			d.rootfs = func(_ context.Context, b Tree, node *NodeBundle, target string, launcher, module []byte) (Tree, error) {
+				calls = append(calls, "rootfs")
+				if !reflect.DeepEqual(b, base) || node != bundle || target != s.target || string(launcher) != "rootfs launcher" || string(module) != "x" {
+					t.Fatal("rootfs provenance/binding")
+				}
+				if fail == "rootfs" {
+					return nil, errors.New("private rootfs detail")
+				}
+				// If completion rereads the mutable launcher, the artifact binding will fail.
+				if e := os.WriteFile(filepath.Join(prep, "owned-eslint"), []byte("changed after assembly"), 0600); e != nil {
+					t.Fatal(e)
+				}
+				assembled = Tree{"ci-trust/owned-eslint": Node{Kind: "file", Mode: 0555, Data: launcher}, "owned/eslint.config.mjs": Node{Kind: "file", Mode: 0444, Data: module}}
+				if fail == "cancel" {
+					cancel()
+				}
+				return assembled, nil
+			}
+			d.artifacts = func(_ context.Context, r artifactRequest) (map[string][]byte, error) {
+				calls = append(calls, "artifacts")
+				if !reflect.DeepEqual(r.tree, assembled) || !reflect.DeepEqual(r.manifest, s.manifest) || !reflect.DeepEqual(r.lock, lock) || string(r.launcher) != "rootfs launcher" || Digest(r.launcher) != Digest(assembled["ci-trust/owned-eslint"].Data) || !reflect.DeepEqual(r.ownedInputs, s.inputs.owned) || !reflect.DeepEqual(r.baseManifest, baseManifest) || !reflect.DeepEqual(r.npmFlags, flags) || r.sourceRevision != "source revision" || r.runID != "run id" || r.runAttempt != "attempt" {
+					t.Fatal("artifact request bindings")
+				}
+				if fail == "artifacts" {
+					return nil, errors.New("private image detail")
+				}
+				if fail == "artifacts-inner" {
+					return nil, NewPreparationFailure("artifact-write", "validation", "")
+				}
+				if fail == "output-cancel" {
+					cancel()
+				}
+				return output, nil
+			}
+			e = prepareWith(c, w, "source revision", "run id", "attempt", d)
+			expected := []string{"acquire", "base", "rootfs", "artifacts", "finish"}
+			stage := ""
+			category := "unexpected"
+			switch fail {
+			case "base", "primary-cleanup":
+				expected = []string{"acquire", "base", "finish"}
+				stage = "base-image"
+			case "base-inner":
+				expected = []string{"acquire", "base", "finish"}
+				stage = "base-layer-diff"
+				category = "validation"
+			case "launcher":
+				expected = []string{"acquire", "base", "finish"}
+				stage = "rootfs"
+				category = "filesystem"
+			case "rootfs":
+				expected = []string{"acquire", "base", "rootfs", "finish"}
+				stage = "rootfs"
+			case "cancel":
+				expected = []string{"acquire", "base", "rootfs", "finish"}
+				stage = "image-validation"
+				category = "network"
+			case "artifacts":
+				stage = "image-validation"
+			case "artifacts-inner":
+				stage = "artifact-write"
+				category = "validation"
+			case "output":
+				stage = "artifact-write"
+				category = "filesystem"
+			case "output-cancel":
+				stage = "artifact-write"
+				category = "network"
+			case "cleanup":
+				stage = "host-inputs"
+				category = "filesystem"
+			}
+			if !reflect.DeepEqual(calls, expected) {
+				t.Fatalf("order: %v want %v error=%v", calls, expected, e)
+			}
+			if fail == "" {
+				if e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				var f *PreparationFailure
+				if !errors.As(e, &f) || f.Stage != stage || f.Category != category {
+					t.Fatalf("stage/category: %v want %s/%s", e, stage, category)
+				}
+				if strings.Contains(Diagnostic(e), "private") {
+					t.Fatal("raw detail leaked")
+				}
+			}
+			if closed != 1 || !p.closed {
+				t.Fatal("handoff not finished", closed)
+			}
+			if _, e = os.Stat(s.temp); !os.IsNotExist(e) {
+				t.Fatal("temp retained", e)
+			}
+			for _, r := range []*os.Root{p.prep, p.source} {
+				if _, e = r.Stat("."); e == nil {
+					t.Fatal("root retained")
+				}
+			}
+			after, e := os.ReadFile(filepath.Join(prep, "inputs.json"))
+			if e != nil || !reflect.DeepEqual(after, inputBytes) {
+				t.Fatal("owned input mutated", e)
+			}
+			after, e = os.ReadFile(filepath.Join(w, "tools/lint-preparation/package.json"))
+			if e != nil || string(after) != preparationManifest {
+				t.Fatal("source manifest mutated", e)
+			}
+			if !reflect.DeepEqual(lock, []byte("frozen-lock")) || !reflect.DeepEqual(flags, []string{"fixed flags"}) || string(base["base"].Data) != "base" {
+				t.Fatal("borrowed data mutated")
+			}
+			if fail == "" || fail == "cleanup" {
+				entries, e := os.ReadDir(filepath.Join(prep, "artifacts"))
+				if e != nil || len(entries) != 7 {
+					t.Fatal("output set", entries, e)
+				}
+				for name, b := range output {
+					got, e := os.ReadFile(filepath.Join(prep, "artifacts", name))
+					if e != nil || !reflect.DeepEqual(got, b) {
+						t.Fatal("output bytes", name, e)
+					}
+				}
+			} else if fail == "output" {
+				b, e := os.ReadFile(sentinel)
+				if e != nil || string(b) != "preserved" {
+					t.Fatal("preexisting output changed", e)
+				}
+				entries, e := os.ReadDir(filepath.Dir(sentinel))
+				if e != nil || len(entries) != 1 {
+					t.Fatal("preexisting output modified", entries, e)
+				}
+			} else if _, e = os.Stat(filepath.Join(prep, "artifacts")); !os.IsNotExist(e) {
+				t.Fatal("unexpected artifacts", e)
+			}
+		})
+	}
+}
+
 func TestAcquisition(t *testing.T) {
 	ctx := context.Background()
 	t.Run("fixed production bindings without execution", func(t *testing.T) {
