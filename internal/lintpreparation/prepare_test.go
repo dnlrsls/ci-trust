@@ -6,8 +6,259 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 )
+
+func TestAcquisition(t *testing.T) {
+	ctx := context.Background()
+	t.Run("fixed production bindings without execution", func(t *testing.T) {
+		d := fixedAcquisitionEffects()
+		if d.goos != runtime.GOOS || d.goarch != runtime.GOARCH {
+			t.Fatal("production platform binding")
+		}
+		for _, pair := range [][2]any{{d.open, openPreparationFS}, {d.download, Download}, {d.decode, DecodeNodeBundle}, {d.materialize, MaterializeNodeBundle}, {d.install, installNPM}, {d.finish, (*preparationFS).finish}} {
+			if reflect.ValueOf(pair[0]).Pointer() != reflect.ValueOf(pair[1]).Pointer() {
+				t.Fatal("production helper binding")
+			}
+		}
+	})
+	t.Run("guards precede acquisition", func(t *testing.T) {
+		for _, platform := range [][2]string{{"windows", "amd64"}, {"linux", "arm64"}, {"linux", "amd64"}} {
+			c, cancel := context.WithCancel(ctx)
+			if platform[0] == "linux" && platform[1] == "amd64" {
+				cancel()
+			}
+			defer cancel()
+			called := 0
+			_, e := acquirePreparationWith(c, "not-an-absolute-workspace", acquisitionEffects{goos: platform[0], goarch: platform[1], open: func(string) (*preparationFS, error) { called++; return nil, nil }})
+			if e == nil || called != 0 {
+				t.Fatalf("guard: %v calls=%d", e, called)
+			}
+			var f *PreparationFailure
+			if !errors.As(e, &f) || f.Stage != "host-inputs" {
+				t.Fatal("guard stage", e)
+			}
+			if platform[0] == "linux" && platform[1] == "amd64" {
+				if f.Category != "network" {
+					t.Fatal("cancellation category", e)
+				}
+			} else if f.Reason != "platform" {
+				t.Fatal("platform admission bypassed", e)
+			}
+		}
+	})
+	for _, fail := range []string{"", "module", "download", "decode", "materialize", "manifest", "install", "cancel", "cleanup", "handoff-cleanup"} {
+		t.Run("flow/"+fail, func(t *testing.T) {
+			w, initial := preparationFixture(t)
+			if e := initial.finish(); e != nil {
+				t.Fatal(e)
+			}
+			prep := filepath.Join(w, ".git/lint-image-preparation")
+			// Launcher deliberately absent: acquisition must defer it to C2b/rootfs.
+			if e := os.Rename(filepath.Join(prep, "owned-eslint"), filepath.Join(prep, "saved-launcher")); e != nil {
+				t.Fatal(e)
+			}
+			if fail == "module" {
+				if e := os.WriteFile(filepath.Join(prep, "inputs.json"), []byte(`{}`), 0600); e != nil {
+					t.Fatal(e)
+				}
+			}
+			inputPath := filepath.Join(prep, "inputs.json")
+			originalInputs, e := os.ReadFile(inputPath)
+			if e != nil {
+				t.Fatal(e)
+			}
+			manifestPath := filepath.Join(w, "tools/lint-preparation/package.json")
+			// Invalid until materialization: proves the manifest is not read early.
+			if e := os.WriteFile(manifestPath, []byte(`{}`), 0600); e != nil {
+				t.Fatal(e)
+			}
+			c, cancel := context.WithCancel(ctx)
+			defer cancel()
+			var calls []string
+			var fs *preparationFS
+			var temp string
+			closed := 0
+			bundle := &NodeBundle{sealed: true}
+			archive := []byte("small authenticated-fixture stand-in")
+			lock := []byte("frozen raw lock")
+			flags := []string{"accepted npm flags"}
+			injected := NewPreparationFailure("npm-lock", "origin-denied", "")
+			d := acquisitionEffects{goos: "linux", goarch: "amd64"}
+			d.open = func(path string) (*preparationFS, error) {
+				calls = append(calls, "open")
+				var e error
+				fs, e = openPreparationFS(path)
+				return fs, e
+			}
+			d.finish = func(p *preparationFS) error {
+				closed++
+				e := p.finish()
+				if fail == "cleanup" || fail == "handoff-cleanup" {
+					return errors.Join(e, os.ErrPermission)
+				}
+				return e
+			}
+			d.download = func(_ context.Context, stage, url, pin string) ([]byte, error) {
+				calls = append(calls, "download")
+				if stage != "node-download" || url != "https://nodejs.org/dist/v24.22.0/node-v24.22.0-linux-x64.tar.gz" || pin != "sha256:28ea0a438de9a13bd7891fd758eee6c7819ee8af5442dfd8d45bd65e56d4228c" {
+					t.Fatal("download binding", stage, url, pin)
+				}
+				temp = filepath.Join(prep, fs.temp)
+				if fail == "download" || fail == "cleanup" {
+					return nil, injected
+				}
+				return archive, nil
+			}
+			d.decode = func(_ context.Context, b []byte) (*NodeBundle, error) {
+				calls = append(calls, "decode")
+				if !reflect.DeepEqual(b, archive) {
+					t.Fatal("archive changed")
+				}
+				if fail == "decode" {
+					return nil, injected
+				}
+				return bundle, nil
+			}
+			d.materialize = func(_ context.Context, b *NodeBundle, dest string) (string, error) {
+				calls = append(calls, "materialize")
+				if b != bundle || dest != temp {
+					t.Fatal("bundle/temp changed")
+				}
+				entries, e := os.ReadDir(dest)
+				if e != nil || len(entries) != 0 {
+					t.Fatal("materialization destination not empty", entries, e)
+				}
+				if fail == "materialize" {
+					return "", injected
+				}
+				node := filepath.Join(dest, nodeBundlePrefix)
+				if e = os.Mkdir(node, 0700); e != nil {
+					t.Fatal(e)
+				}
+				if fail != "manifest" {
+					if e = os.WriteFile(manifestPath, []byte(preparationManifest), 0600); e != nil {
+						t.Fatal(e)
+					}
+				}
+				if fail == "cancel" {
+					cancel()
+				}
+				return node, nil
+			}
+			d.install = func(_ context.Context, node, target, home string) ([]string, []byte, error) {
+				calls = append(calls, "install")
+				if node != filepath.Join(temp, nodeBundlePrefix) || target != filepath.Join(temp, "owned") || home != filepath.Join(temp, "home") {
+					t.Fatal("npm path bindings")
+				}
+				entries, e := os.ReadDir(home)
+				if e != nil || len(entries) != 0 {
+					t.Fatal("home not fresh", entries, e)
+				}
+				entries, e = os.ReadDir(target)
+				if e != nil || len(entries) != 1 || entries[0].Name() != "package.json" {
+					t.Fatal("target not manifest only", entries, e)
+				}
+				b, e := os.ReadFile(filepath.Join(target, "package.json"))
+				if e != nil || string(b) != preparationManifest {
+					t.Fatal("manifest byte binding", e)
+				}
+				if fail == "install" {
+					return nil, nil, injected
+				}
+				return flags, lock, nil
+			}
+			s, e := acquirePreparationWith(c, w, d)
+			expected := []string{"open", "download", "decode", "materialize", "install"}
+			stage := ""
+			switch fail {
+			case "module":
+				expected = expected[:1]
+				stage = "host-inputs"
+			case "download", "cleanup":
+				expected = expected[:2]
+				stage = "npm-lock"
+			case "decode":
+				expected = expected[:3]
+				stage = "npm-lock"
+			case "materialize":
+				expected = expected[:4]
+				stage = "npm-lock"
+			case "manifest":
+				expected = expected[:4]
+				stage = "owned-manifest"
+			case "cancel":
+				expected = expected[:4]
+				stage = "owned-manifest"
+			case "install":
+				stage = "npm-lock"
+			}
+			if !reflect.DeepEqual(calls, expected) {
+				t.Fatalf("order: %v want %v error=%v", calls, expected, e)
+			}
+			if fail == "" || fail == "handoff-cleanup" {
+				if e != nil || s == nil {
+					t.Fatal("handoff", e)
+				}
+				if closed != 0 || s.fs != fs || s.bundle != bundle || s.temp != temp || s.nodeRoot != filepath.Join(temp, nodeBundlePrefix) || s.target != filepath.Join(temp, "owned") || s.home != filepath.Join(temp, "home") || string(s.manifest) != preparationManifest || !reflect.DeepEqual(s.lock, lock) || !reflect.DeepEqual(s.flags, flags) || string(s.inputs.module) != "x" || s.inputs.owned["extra"] == nil {
+					t.Fatal("handoff bindings")
+				}
+				e = s.finish()
+				if fail == "handoff-cleanup" {
+					var f *PreparationFailure
+					if !errors.As(e, &f) || f.Stage != "host-inputs" || f.Category != "filesystem" {
+						t.Fatal("cleanup success incorrectly reported", e)
+					}
+				} else if e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				var f *PreparationFailure
+				if s != nil || !errors.As(e, &f) || f.Stage != stage {
+					t.Fatalf("failure: state=%v error=%v wantstage=%s", s, e, stage)
+				}
+				if stage == "npm-lock" && f.Category != "origin-denied" {
+					t.Fatal("inner category lost", e)
+				}
+			}
+			if closed != 1 || !fs.closed {
+				t.Fatal("ownership not finished", closed)
+			}
+			for _, r := range []*os.Root{fs.prep, fs.source} {
+				if _, e := r.Stat("."); e == nil {
+					t.Fatal("root handle retained")
+				}
+			}
+			currentInputs, e := os.ReadFile(inputPath)
+			if e != nil || !reflect.DeepEqual(currentInputs, originalInputs) {
+				t.Fatal("caller inputs changed", e)
+			}
+			if temp != "" {
+				if _, e = os.Stat(temp); !os.IsNotExist(e) {
+					t.Fatal("owned temp retained", e)
+				}
+			}
+			entries, e := os.ReadDir(prep)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), "owned-lint-") || entry.Name() == "artifacts" {
+					t.Fatal("unexpected owned output", entry.Name())
+				}
+			}
+			b, e := os.ReadFile(filepath.Join(prep, "saved-launcher"))
+			if e != nil || string(b) != "launcher" {
+				t.Fatal("source launcher changed", e)
+			}
+			if !reflect.DeepEqual(lock, []byte("frozen raw lock")) || !reflect.DeepEqual(flags, []string{"accepted npm flags"}) {
+				t.Fatal("npm result mutated")
+			}
+		})
+	}
+}
 
 const preparationManifest = `{"name":"ci-trust-owned-eslint-preparation","version":"0.0.0","private":true,"dependencies":{"eslint":"10.12.0"}}`
 
