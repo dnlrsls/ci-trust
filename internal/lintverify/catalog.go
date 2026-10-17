@@ -107,13 +107,3 @@ type outcome struct {
 func unresolved(reason string) outcome {
 	return outcome{decision: ls.Result{Outcome: ls.Unverifiable, Reason: reason, Scope: "TOOL_FIXTURE"}}
 }
-func evaluate(ctx context.Context, snapshot string, d dependencies) outcome {
-	// This must precede every authorizer, clock, snapshot and runtime seam.
-	if reason := d.catalog.blocked(); reason != "" {
-		return unresolved(reason)
-	}
-	if _, ok := planFor(d.catalog, snapshot); !ok {
-		return unresolved("LINT_IDENTITY_INVALID")
-	}
-	return unresolved("LINT_EXECUTION_UNAVAILABLE")
-}
