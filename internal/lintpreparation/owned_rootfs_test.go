@@ -5,10 +5,242 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+func installedFixture(t *testing.T, files map[string]string) string {
+	t.Helper()
+	target := t.TempDir()
+	if err := os.Mkdir(filepath.Join(target, "node_modules"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		p := filepath.Join(target, "node_modules", filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return target
+}
+
+func TestOwnedImportExact(t *testing.T) {
+	files := map[string]string{"pkg/index.js": "one", "pkg/empty": "", "@scope/pkg/lib/a.js": "two"}
+	target := installedFixture(t, files)
+	if err := os.MkdirAll(filepath.Join(target, "node_modules", "empty", "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	base := Tree{"keep": {Kind: "file", Mode: 0444, Data: []byte("base")}, "owned/node_modules": {Kind: "dir", Mode: 0555}}
+	b := seedBundle(t)
+	l, m := []byte("l"), []byte("m")
+	unchanged := seedSnapshot(base, b, l, m)
+	want, err := seedOwnedRootfs(context.Background(), base, b, l, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"owned/node_modules", "owned/node_modules/pkg", "owned/node_modules/@scope", "owned/node_modules/@scope/pkg", "owned/node_modules/@scope/pkg/lib"} {
+		want[p] = Node{Kind: "dir", Mode: 0555}
+	}
+	for p, data := range files {
+		want["owned/node_modules/"+p] = Node{Kind: "file", Mode: 0444, Data: []byte(data)}
+	}
+	got, err := buildOwnedRootfs(context.Background(), base, b, target, l, m)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("import mismatch: %v %#v", err, got)
+	}
+	if _, err := Inventory(got); err != nil {
+		t.Fatal(err)
+	}
+	delete(got, "keep")
+	unchanged(t)
+	empty, err := buildOwnedRootfs(context.Background(), Tree{}, b, installedFixture(t, nil), l, m)
+	seed, seedErr := seedOwnedRootfs(context.Background(), Tree{}, b, l, m)
+	if err != nil || seedErr != nil || !reflect.DeepEqual(empty, seed) {
+		t.Fatal("empty installation emitted directories", err, seedErr)
+	}
+	for p, data := range files {
+		actual, err := os.ReadFile(filepath.Join(target, "node_modules", filepath.FromSlash(p)))
+		if err != nil || string(actual) != data {
+			t.Fatal("source changed", err)
+		}
+	}
+}
+
+func TestOwnedImportRefusals(t *testing.T) {
+	b := seedBundle(t)
+	l, m := []byte("l"), []byte("m")
+	for _, kind := range []string{"missing", "file", "missing-target", "relative", "symlink-file", "symlink-dir", "symlink-root", "symlink-target"} {
+		t.Run(kind, func(t *testing.T) {
+			target := installedFixture(t, map[string]string{"pkg/a": "a"})
+			modules := filepath.Join(target, "node_modules")
+			switch kind {
+			case "missing":
+				target = t.TempDir()
+			case "file":
+				target = t.TempDir()
+				if err := os.WriteFile(filepath.Join(target, "node_modules"), []byte("file"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "missing-target":
+				target = filepath.Join(target, "absent")
+			case "relative":
+				target = "relative-target"
+			default:
+				link, dest := filepath.Join(modules, "alias"), filepath.Join(modules, "pkg", "a")
+				if kind == "symlink-dir" {
+					dest = filepath.Join(modules, "pkg")
+				}
+				if kind == "symlink-root" {
+					link = filepath.Join(t.TempDir(), "node_modules")
+					dest = modules
+					target = filepath.Dir(link)
+				}
+				if kind == "symlink-target" {
+					link = filepath.Join(t.TempDir(), "target")
+					dest = target
+					target = link
+				}
+				if err := os.Symlink(dest, link); err != nil {
+					t.Fatalf("required symlink fixture unavailable: %v", err)
+				}
+			}
+			base := Tree{}
+			unchanged := seedSnapshot(base, b, l, m)
+			got, err := buildOwnedRootfs(context.Background(), base, b, target, l, m)
+			if err == nil || got != nil {
+				t.Fatalf("accepted invalid installed shape: %v %v", got, err)
+			}
+			unchanged(t)
+		})
+	}
+	for _, p := range []string{"owned", "owned/node_modules", "owned/node_modules/pkg", "owned/node_modules/pkg/a", "owned/node_modules/pkg/a/child"} {
+		t.Run(p, func(t *testing.T) {
+			target := installedFixture(t, map[string]string{"pkg/a": "a"})
+			base := Tree{p: {Kind: "file", Mode: 0444, Data: []byte("old")}}
+			unchanged := seedSnapshot(base, b, l, m)
+			got, err := buildOwnedRootfs(context.Background(), base, b, target, l, m)
+			if err == nil || got != nil {
+				t.Fatal("collision/ancestor/descendant accepted")
+			}
+			unchanged(t)
+			source, err := os.ReadFile(filepath.Join(target, "node_modules", "pkg", "a"))
+			if err != nil || string(source) != "a" {
+				t.Fatal("source changed", err)
+			}
+		})
+	}
+}
+
+func TestOwnedImportBudgetsAndGuards(t *testing.T) {
+	target := installedFixture(t, map[string]string{"a": "abc", "b": "de"})
+	if err := os.Mkdir(filepath.Join(target, "node_modules", "empty"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	base := Tree{}
+	b := seedBundle(t)
+	l, m := []byte("l"), []byte("m")
+	unchanged := seedSnapshot(base, b, l, m)
+	// Root + two files + one empty directory: deterministic visited accounting.
+	limits := installedLimits{2, 4, 12, 5, 1024}
+	for _, tc := range []struct {
+		name   string
+		limits installedLimits
+		ok     bool
+	}{
+		{"exact", limits, true},
+		{"file-one-over", installedLimits{1, 4, 12, 5, 1024}, false},
+		{"bytes-one-over", installedLimits{2, 4, 12, 4, 1024}, false},
+		{"visited-one-over", installedLimits{2, 3, 12, 5, 1024}, false},
+		{"tree-files-one-over", installedLimits{2, 4, 11, 5, 1024}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := tc.limits
+			got, err := buildOwnedRootfsWith(context.Background(), base, b, target, l, m, tc.limits)
+			if tc.ok {
+				if err != nil || got == nil {
+					t.Fatalf("exact rejected: %v", err)
+				}
+			} else if err == nil || got != nil {
+				t.Fatalf("budget accepted: %v %v", got, err)
+			}
+			if tc.limits != before {
+				t.Fatal("caller limits changed")
+			}
+			unchanged(t)
+		})
+	}
+	got, err := seedOwnedRootfs(context.Background(), base, b, l, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata int64
+	for p, n := range got {
+		metadata += int64(len(p) + len(n.Target))
+	}
+	for _, p := range []string{"owned/node_modules", "owned/node_modules/a", "owned/node_modules/b"} {
+		metadata += int64(len(p))
+	}
+	for _, delta := range []int64{0, -1} {
+		lim := limits
+		lim.treeBytes = metadata + delta
+		out, err := buildOwnedRootfsWith(context.Background(), base, b, target, l, m, lim)
+		if delta == 0 {
+			if err != nil || out == nil {
+				t.Fatalf("metadata exact: %v", err)
+			}
+		} else if err == nil || out != nil {
+			t.Error("global metadata limit ignored")
+		}
+	}
+	// Payload-dominant global cap is distinct from the installed aggregate.
+	large := bytes.Repeat([]byte{'m'}, 512)
+	for _, cap := range []int64{523, 522} {
+		lim := limits
+		lim.treeBytes = cap
+		out, err := buildOwnedRootfsWith(context.Background(), base, b, target, l, large, lim)
+		if cap == 523 {
+			if err != nil || out == nil {
+				t.Fatalf("global payload exact: %v", err)
+			}
+		} else if err == nil || out != nil {
+			t.Error("global payload limit ignored")
+		}
+	}
+	probe := &seedCancelContext{Context: context.Background(), after: 100000}
+	if _, err := seedOwnedRootfs(probe, base, b, l, m); err != nil {
+		t.Fatal(err)
+	}
+	for _, after := range []int{1, probe.checks + 8} {
+		ctx := &seedCancelContext{Context: context.Background(), after: after}
+		out, err := buildOwnedRootfs(ctx, base, b, target, l, m)
+		if out != nil || !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancellation: %v %v", out, err)
+		}
+		unchanged(t)
+	}
+	for p, want := range map[string]string{"a": "abc", "b": "de"} {
+		data, err := os.ReadFile(filepath.Join(target, "node_modules", p))
+		if err != nil || string(data) != want {
+			t.Fatal("source changed after rejection", err)
+		}
+	}
+	if !bytes.Equal(large, bytes.Repeat([]byte{'m'}, 512)) {
+		t.Fatal("module changed")
+	}
+	for _, bundle := range []*NodeBundle{nil, {}} {
+		out, err := buildOwnedRootfs(context.Background(), base, bundle, "", l, m)
+		if out != nil || err == nil {
+			t.Fatal("seal guard ignored")
+		}
+	}
+	unchanged(t)
+}
 
 func seedBundle(t *testing.T) *NodeBundle {
 	t.Helper()
