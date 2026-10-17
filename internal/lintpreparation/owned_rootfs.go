@@ -282,7 +282,11 @@ func seedOwnedRootfsWith(ctx context.Context, base Tree, bundle *NodeBundle, lau
 		}
 		switch path.Base(name) {
 		case "sh", "bash", "dash", "npm", "npx", "gcc", "cc", "python", "python3":
-			return nil, NewValidationFailure("rootfs-base-banned")
+			// The caller supplies a validated normalized base. A plain directory
+			// is namespace data, not the forbidden file/link named by this rule.
+			if n.Kind != "dir" {
+				return nil, NewValidationFailure("rootfs-base-banned")
+			}
 		}
 		for _, addition := range additions {
 			if strings.HasPrefix(name, addition.name+"/") {
