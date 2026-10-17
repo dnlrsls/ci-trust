@@ -23,9 +23,11 @@ type Identities struct {
 	ArchiveSHA256 string `json:"archive_sha256"`
 }
 type Report struct {
-	Verdict         string     `json:"verdict"`
-	Identities      Identities `json:"identities"`
-	RuntimeAdmitted bool       `json:"runtime_admitted"`
+	Verdict          string     `json:"verdict"`
+	Identities       Identities `json:"identities"`
+	RuntimeAdmitted  bool       `json:"runtime_admitted"`
+	InventoryEntries int        `json:"inventory_entries,omitempty"`
+	FileBytes        int64      `json:"file_bytes,omitempty"`
 }
 
 // InspectEnvelope checks the fixed archive envelope, not its filesystem policy.
