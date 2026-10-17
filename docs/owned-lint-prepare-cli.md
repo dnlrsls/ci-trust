@@ -74,7 +74,7 @@ localize a refusal without revealing the rejected path or weakening its guard:
 | --- | --- |
 | `rootfs-launcher` | Owned launcher input read (original category is retained) |
 | `rootfs-bundle`, `rootfs-node`, `rootfs-license` | Sealed bundle or required regular payload |
-| `rootfs-base-banned` | Forbidden executable basename in the base tree |
+| `rootfs-base-banned` | Reserved executable basename on a non-directory base entry, including files and links |
 | `rootfs-seed-descendant`, `rootfs-seed-parent`, `rootfs-seed-collision` | Owned seed namespace conflict |
 | `rootfs-target`, `rootfs-modules` | Stable ordinary installation or node_modules root |
 | `rootfs-entry-path`, `rootfs-entry-type` | Installed entry path or classification |
@@ -87,6 +87,14 @@ identifies a refused installed entry class, not its name. It does not prove why
 an earlier run with no reason failed. Unknown reason strings are still omitted;
 paths, URLs, raw errors and process output are never printed. Missing directories,
 symlinks, forbidden content, collisions and resource overruns remain rejected.
+
+The reserved-name ban is type-aware: ordinary normalized directory entries such
+as `usr/share/gcc` and `usr/share/gcc/python` are namespace data, not executables.
+They retain the validated base's `0555` directory mode and remain subject to all
+path, privilege, namespace and resource checks. A file or link with a reserved
+basename is still rejected, even when a regular file has no execute bits. This
+is not an exception for two fixed paths, a runtime compatibility result or
+permission to execute Python, a compiler or any image content.
 
 ## Migration status and gates
 

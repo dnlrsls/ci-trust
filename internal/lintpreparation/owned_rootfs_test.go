@@ -390,14 +390,47 @@ func TestOwnedSeedGuards(t *testing.T) {
 	}
 }
 
+func TestOwnedSeedBannedBasenameDirectories(t *testing.T) {
+	// These two directory names and modes were observed in the authenticated
+	// pinned base; the child payload is an inert synthetic fixture, not image code.
+	base := Tree{
+		"usr":                               {Kind: "dir", Mode: 0555},
+		"usr/share":                         {Kind: "dir", Mode: 0555},
+		"usr/share/gcc":                     {Kind: "dir", Mode: 0555},
+		"usr/share/gcc/python":              {Kind: "dir", Mode: 0555},
+		"usr/share/gcc/python/metadata.txt": {Kind: "file", Mode: 0444, Data: []byte("fixture metadata")},
+	}
+	// The rule is type-aware, not an exception for two hard-coded image paths.
+	for _, name := range strings.Fields("sh bash dash npm npx gcc cc python python3") {
+		base["usr/share/"+name] = Node{Kind: "dir", Mode: 0555}
+	}
+	b, l, m := seedBundle(t), []byte("launcher"), []byte("module")
+	unchanged := seedSnapshot(base, b, l, m)
+	got, err := seedOwnedRootfs(context.Background(), base, b, l, m)
+	if err != nil || got == nil {
+		t.Fatalf("normalized directory mistaken for forbidden executable: %v", err)
+	}
+	for name, want := range base {
+		if !reflect.DeepEqual(got[name], want) {
+			t.Fatalf("base entry changed: %s: %#v", name, got[name])
+		}
+	}
+	if _, err := Inventory(got); err != nil {
+		t.Fatalf("allowed directory seed is not a valid image tree: %v", err)
+	}
+	unchanged(t)
+}
+
 func TestOwnedSeedBansAndConflicts(t *testing.T) {
 	cases := map[string]Tree{}
 	reasons := map[string]string{}
 	for _, ban := range strings.Fields("sh bash dash npm npx gcc cc python python3") {
-		for _, kind := range []string{"file", "dir", "link"} {
+		for _, kind := range []string{"file", "link"} {
 			cases[ban+kind] = Tree{"usr": {Kind: "dir", Mode: 0555}, "usr/" + ban: {Kind: kind, Mode: 0555}}
 			reasons[ban+kind] = "rootfs-base-banned"
 		}
+		cases[ban+"-executable"] = Tree{"usr": {Kind: "dir", Mode: 0555}, "usr/" + ban: {Kind: "file", Mode: 0555, Data: []byte("inert executable fixture")}}
+		reasons[ban+"-executable"] = "rootfs-base-banned"
 	}
 	for _, p := range []string{"owned/node/bin/node", "owned/node/LICENSE", "ci-trust/owned-eslint", "owned/eslint.config.mjs"} {
 		for _, kind := range []string{"file", "dir", "link"} {
@@ -419,7 +452,7 @@ func TestOwnedSeedBansAndConflicts(t *testing.T) {
 			if n.Kind == "link" {
 				n.Mode, n.Target = 0777, "/keep"
 			}
-			if n.Kind == "file" {
+			if n.Kind == "file" && !strings.HasSuffix(name, "-executable") {
 				n.Mode = 0444
 			}
 			base[p] = n
