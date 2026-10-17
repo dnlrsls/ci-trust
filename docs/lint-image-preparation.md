@@ -15,18 +15,30 @@ review remains a human action; an agent must not approve on the reviewer's behal
 
 Preparation requires a fresh hosted Ubuntu 24.04 job, up to fifteen minutes,
 contents-read token permissions, fixed Go 1.26.4, no shared package caches and
-checkout of the exact dispatch SHA without persisted Git credentials. It uses
-the hosted Python standard library; interpreter details are recorded, not claimed
-as a separately pinned builder image. No host/SSH session or image registry write
-is needed. New Python unit tests also run offline in Linux PR CI before merge.
+checkout of the exact dispatch SHA without persisted Git credentials. Workflow
+source now uses the Go preparer: offline preparation-subtree tests run before
+compiling the fixed launcher and preparation binary, with private project caches
+and temporary storage under umask 077. Toolchain/dependency network fallback and
+shared caches are disabled. The fixed compiler is not a separately pinned builder
+image or independent reproduction proof; metadata records `go_version`, not the
+legacy `python_version`. Portable Go CI already tests all packages on Linux,
+Windows and macOS. No host/SSH session or image registry write is needed.
+
+The compiled preparation binary runs directly under a 600-second TERM deadline
+with a ten-second kill grace; compilation happens before that deadline. See the
+[CLI guide](owned-lint-prepare-cli.md) for inputs, outputs and safe help. This is a
+source cutover only, not an executed or fully accepted migration. Legacy Python
+source/tests remain pending independent replacement validation.
 
 ## Allowed effects
 
-- Compile the owned Go launcher without executing it; emit compiled owned config,
+- Compile the owned Go launcher and preparer; do not execute the launcher. Emit compiled owned config,
   recipe and fixture identities through an owned Go data-only helper.
-- Download the official Node 24.22.0 Linux x64 archive, verified against the exact
-  SHA-256 captured from the [release checksum list](https://nodejs.org/dist/v24.22.0/SHASUMS256.txt).
-  Bundled npm must be exactly 11.19.1.
+- Download the official `node-v24.22.0-linux-x64.tar.gz`, verified against SHA-256
+  `28ea0a438de9a13bd7891fd758eee6c7819ee8af5442dfd8d45bd65e56d4228c`, captured
+  from the [release checksum list](https://nodejs.org/dist/v24.22.0/SHASUMS256.txt).
+  Preparation uses the fixed gzip archive pin directly, not another checksum-list
+  request. Bundled npm must be exactly 11.19.1.
 - Run that pinned Node/npm **only as the preparation package manager**, never
   ESLint or arbitrary package scripts. Resolve exact ESLint 10.12.0 in a fresh
   owned directory, validate a complete lockfile v3, then perform frozen install
@@ -43,6 +55,13 @@ is needed. New Python unit tests also run offline in Linux PR CI before merge.
   Verify manifest/config/compressed-layer hashes and uncompressed diff IDs; import
   layers as in-memory data, never host extraction or container execution. Whiteouts,
   special/privileged entries, duplicate paths and unsafe link ancestry fail closed.
+  Input SGID is allowed only on directories. Named directories are normalized to
+  0555 in memory and in the emitted archive (for example, `var/local` mode 02775).
+  Root directory markers `.` and `./` are ignored, including SGID-only markers,
+  but are still checked for setuid and capabilities before being ignored.
+  Setuid on every entry type, SGID on every non-directory (including links), and
+  any truthy exact `SCHILY.xattr.security.capability` PAX value on any entry type
+  remain rejected with `layer-privileged` before that entry changes the tree.
   Public download redirects are limited to Node/GCR/Google Storage HTTPS origins.
 - Assemble an untagged single-layer Docker-save-shaped archive with fixed Linux/
   amd64, UID/GID 65532, `/work`, no command/entrypoint/environment or execution
@@ -56,6 +75,23 @@ is needed. New Python unit tests also run offline in Linux PR CI before merge.
 No Docker daemon is accessed; no image is loaded, pushed or registered; neither
 ESLint nor the launcher runs. GitHub Actions infrastructure actions use their own
 reviewed runtimes but do not receive authority to execute the prepared tool.
+
+## Supported archive and resource profile
+
+The Go readers explicitly reject global PAX headers rather than ignoring their
+metadata. Local PAX is supported within the bounded profile; unsupported sparse/
+GNU extensions and malformed framing fail closed. This is deliberately narrower
+than the legacy Python reader, not a Python-format parity claim. Compatibility
+of the actual pinned archives with every profile restriction has not been proved
+by synthetic tests or this source cutover.
+
+Path/link validation rejects escapes, unsafe ancestry and cycles. Node host-link
+paths/targets have a 16 KiB byte cap, alias resolution has a shared deterministic
+work budget, and pending resolution state has a 512 KiB weighted accounting cap.
+Costlier finite aliases can also be rejected. Rootfs data/metadata and file counts
+remain bounded (512 MiB and 50,000 entries); installed data additionally has a
+128 MiB cap. JSON nesting is capped at 1,000. These technical accounting limits
+are not elapsed-time, peak-memory, host-isolation or real-pin compatibility proofs.
 
 ## Failure diagnostics
 

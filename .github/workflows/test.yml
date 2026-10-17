@@ -34,6 +34,3 @@ jobs:
         run: go test -count=1 -v ./...
       - name: Vet owned source
         run: go vet ./...
-      - name: Test offline lint preparation parsers - no Node or network
-        if: runner.os == 'Linux'
-        run: python3 -I -B -m unittest discover -s tools/lint-preparation -p test_prepare.py
