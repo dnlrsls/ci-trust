@@ -74,3 +74,19 @@ content or the following review check failed. Source-change precedence remains
 These stages identify a workflow boundary, not the underlying cause or Node
 execution. No raw errors, outputs, paths or credentials are reported; acceptance,
 consent, pins, limits, report schema and diagnostic IDs do not change.
+
+## Independent execution and cleanup facts
+
+The existing internal runner result now retains whether Start was requested,
+a closed primary failure code and whether Remove was attempted. Cleanup remains
+derived from the existing verified-absence flag; no-start does not become
+verified cleanup. A failed Start and unverified Remove therefore survive together
+even though cleanup still wins the legacy rejection reason. These optional facts
+are excluded from Result JSON; existing wire/report schemas and IDs do not change.
+
+One allowlisted projection carries the same producer facts through capture,
+source-change, cleanup, cancellation and expiry decisions without promoting
+execution or efficacy. Nil facts mean unavailable metadata, not no-start.
+Unknown causes become UNSPECIFIED; raw errors, streams, paths and tokens are
+never copied. A requested Start is not proof of container creation or Node
+execution. No new gate, option, admission or relaxation of cleanup is introduced.

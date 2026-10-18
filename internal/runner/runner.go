@@ -52,7 +52,15 @@ const (
 
 // Result preserves a tool exit code without interpreting it as validator PASS/FAIL.
 // CleanupVerified is true only when the trusted runtime attests container absence.
+// ExecutionFacts observe harness calls; they never grant execution consent.
+// StartRequested does not attest that a container or validator actually started.
+type ExecutionFacts struct {
+	StartRequested, CleanupAttempted bool
+	Primary                          string
+}
+
 type Result struct {
+	Facts           *ExecutionFacts `json:"-"`
 	Outcome         Outcome
 	Reason          string
 	ExitCode        int
@@ -127,22 +135,25 @@ func (p Plan) Display() string {
 // Consent is not authentication: callers must never translate an agent's yes flag
 // into Approved. This package has no CLI or autonomous consent facility.
 func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
-	result := Result{Outcome: Invalid, ExitCode: -1}
+	result := Result{Outcome: Invalid, ExitCode: -1, Facts: &ExecutionFacts{}}
 	allowed := valid(p)
 	if r.lint {
 		allowed = validLint(p)
 	}
 	if !allowed || p != r.owned {
+		result.Facts.Primary = "PLAN_INVALID"
 		result.Reason = "plan outside owned allowlist"
 		return result
 	}
 	if !c.Approved || c.Digest != p.Digest() {
 		result.Outcome = Denied
+		result.Facts.Primary = "CONSENT_INVALID"
 		result.Reason = "absent or stale explicit consent"
 		return result
 	}
 	result.Outcome = Unverifiable
 	if err := ctx.Err(); err != nil {
+		result.Facts.Primary = "CONTEXT_ENDED"
 		result.Reason = err.Error()
 		return result
 	}
@@ -151,20 +162,24 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 		var ok bool
 		split, ok = r.runtime.(capturedRuntime)
 		if !ok {
+			result.Facts.Primary = "TRANSPORT_UNAVAILABLE"
 			result.Reason = "split container transport unavailable"
 			return result
 		}
 	}
 	if err := r.runtime.Preflight(ctx, p); err != nil {
+		result.Facts.Primary = "PREFLIGHT_FAILED"
 		result.Reason = "preflight: " + err.Error()
 		return result
 	}
 	snap, err := r.snapshot(ctx)
 	if err != nil || snap != p.Snapshot {
+		result.Facts.Primary = "SOURCE_CHANGED"
 		result.Reason = "source snapshot changed or unavailable"
 		return result
 	}
 	if err := ctx.Err(); err != nil {
+		result.Facts.Primary = "CONTEXT_ENDED"
 		result.Reason = err.Error()
 		return result
 	}
@@ -176,6 +191,7 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	var code int
 	var runErr error
 	var captured *splitOutput
+	result.Facts.StartRequested = true
 	if split != nil {
 		// Both owned entrypoints receive empty container stdin. The lint
 		// launcher selects and feeds its fixed fixture internally from the role.
@@ -191,6 +207,7 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 		result.OOMEvent = source.OOMEvent()
 	}
 	cleanupCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+	result.Facts.CleanupAttempted = true
 	cleanupErr := r.runtime.Remove(cleanupCtx, name)
 	stop()
 	output, overflow := out.state()
@@ -200,6 +217,17 @@ func (r *Runner) Execute(ctx context.Context, p Plan, c Consent) Result {
 	}
 	result.ExitCode = code
 	result.CleanupVerified = cleanupErr == nil
+	// Retain the execution failure before cleanup wins the legacy Reason.
+	switch {
+	case overflow:
+		result.Facts.Primary = "OUTPUT_LIMIT"
+	case runCtx.Err() != nil:
+		result.Facts.Primary = "WALLTIME_OR_CANCEL"
+	case runErr != nil:
+		result.Facts.Primary = "START_FAILED"
+	case r.lint && code != 0:
+		result.Facts.Primary = "LAUNCHER_EXIT"
+	}
 	switch {
 	case cleanupErr != nil:
 		result.Reason = "cleanup unverified: " + cleanupErr.Error()

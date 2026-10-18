@@ -67,7 +67,7 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 	}
 	reason := safeReason(out.decision.Reason)
 	message := "Owned lint sensitivity: " + string(out.decision.Outcome) + ". " + scopeLimit
-	if reason == "LINT_HARNESS_FAILURE" && out.decision.Outcome == ls.Unverifiable {
+	if (reason == "LINT_HARNESS_FAILURE" || reason == "LINT_CLEANUP_UNVERIFIED" || reason == "LINT_SOURCE_CHANGED" || reason == "LINT_CANCELLED" || reason == "LINT_REVIEW_EXPIRED") && out.decision.Outcome == ls.Unverifiable {
 		message += out.harness.text()
 	}
 	if reason == "LINT_PREFLIGHT_UNAVAILABLE" && out.decision.Outcome == ls.Unverifiable {
