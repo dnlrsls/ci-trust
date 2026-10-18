@@ -164,10 +164,13 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 		approved, e = s.review(ctx, p, r)
 		return approved, e
 	}
+	preflightStage := ""
 	d.preflight = func(ctx context.Context, p plan) error {
+		preflightStage = "REVIEW_BEFORE_DELIVERY"
 		if !validReview() {
 			return workflowUnavailable
 		}
+		preflightStage = "ARTIFACT_DELIVERY_OR_REVIEW"
 		image, e := s.deliver(ctx, r)
 		if e != nil || len(image.archive) == 0 || len(image.inventory) == 0 || !validReview() {
 			return workflowUnavailable
@@ -175,10 +178,12 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 		if !measure() {
 			return workflowUnavailable
 		}
+		preflightStage = "RUNTIME_CREATION"
 		rt, e := s.newRuntime()
 		if e != nil || rt == nil {
 			return workflowUnavailable
 		}
+		preflightStage = "IMAGE_LOAD"
 		loadCtx, cancel := context.WithTimeout(ctx, approved.expires.Sub(s.now()))
 		e = rt.load(loadCtx, image.archive, image.inventory)
 		cancel()
@@ -223,6 +228,9 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 	out := evaluate(ctx, snapshot, d)
 	if changed {
 		return unresolved("LINT_SOURCE_CHANGED")
+	}
+	if out.decision.Reason == "LINT_PREFLIGHT_UNAVAILABLE" && out.decision.Outcome == ls.Unverifiable {
+		out.preflightStage = preflightStage
 	}
 	return out
 }

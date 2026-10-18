@@ -99,9 +99,10 @@ type dependencies struct {
 	now       func() time.Time
 }
 type outcome struct {
-	decision     ls.Result
-	observations []ls.Observation
-	harness      harnessDetail
+	decision       ls.Result
+	observations   []ls.Observation
+	harness        harnessDetail
+	preflightStage string
 }
 
 func unresolved(reason string) outcome {
