@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dnlrsls/ci-trust/internal/lintcatalog"
 	"io"
 	"os"
 	"path/filepath"
@@ -117,6 +118,9 @@ func (d *LocalDocker) admit(ctx context.Context) error {
 }
 
 func (d *LocalDocker) Preflight(ctx context.Context, p Plan) error {
+	if validLint(p) && lintcatalog.BlockedReason() != "" {
+		return errors.New("compiled lint runtime is not admitted")
+	}
 	if err := d.admit(ctx); err != nil {
 		return err
 	}
@@ -128,7 +132,7 @@ func (d *LocalDocker) Preflight(ctx context.Context, p Plan) error {
 	if d.loadAttempted && (!d.loadVerified || p.Image != d.loadedImage) {
 		return errors.New("owned image load unverified or plan image changed")
 	}
-	if d.host != "linux" || d.client == nil || !valid(p) {
+	if d.host != "linux" || d.client == nil || (!valid(p) && !validLint(p)) {
 		return errors.New("unsupported local Linux scope or plan")
 	}
 	if p.Transport == splitStdin {
@@ -239,7 +243,7 @@ func (d *LocalDocker) start(ctx context.Context, name string, args []string, w i
 	if capture != nil {
 		var ok bool
 		split, ok = d.client.(splitDockerClient)
-		if !ok || d.plan.Transport != splitStdin || input != "" || !valid(d.plan) {
+		if !ok || d.plan.Transport != splitStdin || input != "" || (!valid(d.plan) && !validLint(d.plan)) {
 			return -1, errors.New("unowned or unavailable split transport")
 		}
 	} else if d.plan.Transport != "" || w == nil {
