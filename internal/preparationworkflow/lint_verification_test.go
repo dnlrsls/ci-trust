@@ -47,6 +47,24 @@ func TestLintVerificationManualOwnerProtectedBoundary(t *testing.T) {
 		t.Error("execution audit permissions not read-only")
 	}
 }
+func TestLintVerificationUsesPublicWorkflowRequest(t *testing.T) {
+	w := lintVerificationSource(t)
+	var plan, verify string
+	for _, s := range w.Jobs["plan"].Steps {
+		plan += s.Run + "\n"
+	}
+	for _, s := range w.Jobs["verify"].Steps {
+		verify += s.Run + "\n"
+	}
+	call := `"$state/ci-trust" verify "$GITHUB_WORKSPACE" --check lint --workflow-request - --format json`
+	if !strings.Contains(plan, `"$state/controlled-lint" prepare`) || !strings.Contains(verify, `-o "$state/ci-trust" ./cmd/ci-trust`) || strings.Count(verify, call) != 1 || strings.Contains(verify, `"$state/controlled-lint" verify`) {
+		t.Fatal("protected verify must build and invoke the public CLI once, retaining fixed plan preparation")
+	}
+	if !strings.Contains(verify, call+` < "$state/plan.json" > "$state/report.json"`) || !strings.Contains(verify, "result=$?") || !strings.Contains(verify, `exit "$result"`) {
+		t.Fatal("request/report/strict public CLI exit must propagate without a success override")
+	}
+}
+
 func TestLintVerificationFixedStepsNoShortcuts(t *testing.T) {
 	w := lintVerificationSource(t)
 	pins := map[string]bool{
@@ -91,7 +109,7 @@ func TestLintVerificationFixedStepsNoShortcuts(t *testing.T) {
 			for _, s := range j.Steps {
 				if s.ID == "verify" {
 					found = true
-					if s.Env["REQUEST"] != "${{ needs.plan.outputs.request }}" || s.Env["GITHUB_TOKEN"] != "${{ secrets.GITHUB_TOKEN }}" || !strings.Contains(s.Run, "install -d -m 700") || !strings.Contains(s.Run, "controlled-lint\" verify") {
+					if s.Env["REQUEST"] != "${{ needs.plan.outputs.request }}" || s.Env["GITHUB_TOKEN"] != "${{ secrets.GITHUB_TOKEN }}" || !strings.Contains(s.Run, "install -d -m 700") || !strings.Contains(s.Run, "ci-trust\" verify \"$GITHUB_WORKSPACE\" --check lint --workflow-request - --format json") {
 						t.Error("missing protected fixed execution")
 					}
 				}
