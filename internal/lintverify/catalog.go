@@ -88,6 +88,7 @@ type approval struct {
 type captureResult struct {
 	capture         ls.ESLintCapture
 	cleanupVerified bool
+	runtimeCode     string
 }
 type dependencies struct {
 	catalog   catalog
@@ -100,6 +101,7 @@ type dependencies struct {
 type outcome struct {
 	decision     ls.Result
 	observations []ls.Observation
+	harness      harnessDetail
 }
 
 func unresolved(reason string) outcome {
