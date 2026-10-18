@@ -12,11 +12,12 @@ binding, **not authentication, approval or image admission**. Anyone who can
 recompute a digest still needs the separate authenticated human review.
 
 The plan codec implements planning data only. It neither contacts GitHub nor
-produces an execution decision. The selected future workflow is
+produces an execution decision. The separate manual workflow source is
 `.github/workflows/lint-sensitivity-verification.yml`; the Environment remains
 `ci-trust-controlled-verification` without policy changes. Smoke approval is not
-lint consent. The runner connection and workflow/control entrypoint are not yet composed. The Node security hold remains active; preparing
-or reading this document cannot start a process or approve an Environment.
+lint consent. The runner, delivery/loader composition and workflow/control source
+are wired behind the closed gate. The Node hold remains active; preparing or
+reading this document cannot start a process or approve an Environment.
 
 ## Separate read-only GitHub audit
 
@@ -31,10 +32,11 @@ clock or network. The current hold therefore prevents all live requests. The
 HTTPS client owns `api.github.com`, GET-only paths, no proxy/redirects, a ten-second
 audit deadline and one-MiB responses. Errors never include tokens or response text.
 Tests use fake HTTP metadata; no real GitHub approval/audit or execution is claimed.
-No approval/write endpoint, Environment policy edit or workflow dispatch exists here.
+No client code approves a review, edits Environment policy or dispatches a workflow.
 
 The canonical review now also binds `candidate_artifact`: compiled producer
 workflow/revision/run/attempt, repository/artifact identity, name, size and ZIP
 digest. This existing held candidate is not admitted by its provenance. See
 [the protected artifact contract](lint-artifact-delivery.md) for data-only ZIP
-checks and the still-unfinished authenticated delivery/load composition.
+checks and the closed authenticated delivery/load source. Actual interoperability
+and runtime admission remain unverified.

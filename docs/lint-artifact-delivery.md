@@ -31,7 +31,7 @@ Original metadata-client redirect refusal is unchanged. This code is tested
 with fake HTTP, not a live authenticated download. See [GitHub's artifact API](https://docs.github.com/en/rest/actions/artifacts)
 and [artifact communication domains](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#requirements-for-communication-with-github).
 
-An independently checked exact image, the separate gated lint loader and workflow
-composition remain unfinished. The current gate still prevents delivery or image
-loading. Request/report fields, caller catalog copies and decoded data cannot
+The separate independently inspecting lint loader and workflow composition exist
+as closed source. Actual authenticated delivery, loading and compatibility remain
+unproved. The current gate still prevents delivery or image loading. Request/report fields, caller catalog copies and decoded data cannot
 authorize them; no candidate download or target execution was performed.

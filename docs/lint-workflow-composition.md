@@ -20,5 +20,6 @@ No-op FAULT is insensitive; infrastructure failures are never sensitivity passes
 
 The local public `Scan` route remains cold and byte-compatible while held.
 Private fake-service tests cover composition, not real Docker, Node or ESLint.
-Control command/workflow source and actual interoperability evidence remain
-unfinished; no dispatch, Environment change, admission or target execution occurs.
+The [control command and manual workflow](lint-workflow-control.md) are source
+only; actual interoperability evidence remains unfinished. No dispatch,
+Environment change, admission or target execution occurs.
