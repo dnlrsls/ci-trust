@@ -17,7 +17,7 @@ ci-trust audit PATH [--format human|json] [--platform linux|windows|macos ...]
 ci-trust report [--input FILE|-] [--format human|json]
 ci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]
 Dry-run only: no apply behavior; conditional drafts are not executed or enforced.
-ci-trust verify PATH --check lint [--format human|json]
+ci-trust verify PATH --check lint [--format human|json] [--workflow-request -]
 Owned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).
 TOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.
 ci-trust --help
@@ -48,20 +48,40 @@ cannot establish project efficacy, historical CI execution or enforcement.
 A valid unresolved report exits 0; this is not execution approval. Real sensitivity
 requires separately authenticated exact-plan consent/preflight and ordered CLEAN
 exit0, FAULT exit1 with `no-debugger` error at1:1, RESTORED exit0 under an admitted
-runtime. The command currently cannot run that sequence. Private simulated tests
-and the internal launcher do not admit it. See [integration limits](lint-offline-integration.md).
+runtime. The normal invocation cannot run that sequence. Private simulated tests
+and the internal launcher do not admit it. The optional request-data route below
+is still denied by compiled policy. See [integration limits](lint-offline-integration.md).
+
+### Explicit protected workflow request
+
+`--workflow-request -` selects the existing authenticated owned GitHub composition
+and forwards stdin as a bounded canonical non-authorizing plan, not as a report or
+approval. Only `-` is accepted; this option is invalid on audit/report/bootstrap.
+No additional root/image/command/approval override or automatic environment-based
+selection is introduced. The compiled gate precedes request/context/service access.
+
+In this explicit mode, a validated just-produced owned sensitive report exits 0.
+An insensitive or UNVERIFIABLE report is still emitted but exits 1; operational
+errors exit 1 without report bytes; invalid arguments exit 2. Other commands and
+normal `verify` keep their previous exit meanings and do not consume workflow data.
+See [public route limits](lint-public-cli.md). Current production remains held.
 
 ## Pinned text and rendering
 
 Root help is the invocation/help lines, bootstrap dry-run notice and verify gate/scope notice above followed by:
 
 ```
-Offline/read-only: no execution, network, hidden storage, or writes.
+Audit/report/bootstrap: Offline/read-only: no execution, network, hidden storage, or writes.
 Exit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.
+Without --workflow-request: offline/read-only valid-report exit 0, including UNVERIFIABLE.
+--workflow-request -: bounded non-authorizing request on stdin; owned protected GitHub workflow only, never host fallback.
+Workflow exit 0: just-produced owned sensitivity; 1: unavailable, insensitive, unverifiable or operational error; 2: invalid invocation.
 ```
 
 Subcommand help is its invocation line followed by those same two lines;
-bootstrap additionally includes its dry-run/no-apply notice; verify includes its gate/scope notice.
+bootstrap additionally includes its dry-run/no-apply notice. Verify help uses its
+gate/scope notice and the three workflow-specific lines above, not the ordinary
+offline-effects suffix.
 Version is `ci-trust VERSION\n` (Go-quoted VERSION, including quotes, to
 escape untrusted control characters).
 
@@ -148,5 +168,7 @@ exit 1. Real lint execution still requires separately authenticated target-bound
 consent, an admitted runtime and pre-provisioned bounded isolation. There is no
 unsafe yes flag or host-shell fallback. Bootstrap remains conditional dry-run
 proposals, never apply.
-No validators, hooks, scripts, package managers, actions, shell/eval, network,
-credentials or hidden report storage are used by this layer.
+Normal commands do not execute validators/hooks/scripts/package managers, use
+network/credentials or write hidden reports. Explicit workflow request mode can
+reach only the separately gated owned GitHub composition; current compiled policy
+still prevents all live review/runtime effects.

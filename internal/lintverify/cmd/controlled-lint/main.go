@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/dnlrsls/ci-trust/internal/lintcatalog"
 	"github.com/dnlrsls/ci-trust/internal/lintverify"
@@ -72,36 +71,4 @@ func run(ctx context.Context, args []string, input io.Reader, out, stderr io.Wri
 
 // Interpret only our just-produced report for CI exit status, never as runtime
 // admission/consent. There is no command accepting imported observations.
-func reportPassed(data []byte) bool {
-	var r struct {
-		Inventory    []struct{ ID, Kind, Name string }
-		Capabilities []struct {
-			CheckID           string `json:"check_id"`
-			Dimension, Status string
-			Scope             struct{ Kind string }
-		}
-	}
-	if json.Unmarshal(data, &r) != nil {
-		return false
-	}
-	id := ""
-	checks := 0
-	for _, v := range r.Inventory {
-		if v.Kind == "CHECK" && v.Name == "Owned ESLint fixture sensitivity (declaration anchor only)" {
-			id = v.ID
-			checks++
-		}
-	}
-	if checks != 1 || id == "" {
-		return false
-	}
-	count := 0
-	passed := false
-	for _, c := range r.Capabilities {
-		if c.CheckID == id && c.Dimension == "EFFICACY" {
-			count++
-			passed = c.Status == "PRESENT" && c.Scope.Kind == "TOOL_FIXTURE"
-		}
-	}
-	return count == 1 && passed
-}
+func reportPassed(data []byte) bool { return lintverify.SensitiveReport(data) }

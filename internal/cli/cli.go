@@ -1,4 +1,4 @@
-// Package cli provides an injected, read-only command and rendering boundary.
+// Package cli provides an injected command and rendering boundary.
 package cli
 
 import (
@@ -17,11 +17,13 @@ import (
 
 // Services keeps parsing independent of trusted report producers. Audit and
 // Verify must redact known secrets before returning schema-v1 bytes. Verify is
-// not approval or runtime authority; production composes only the held service.
+// not approval or runtime authority. VerifyWorkflow accepts request data only;
+// its bool is a just-produced report disposition, never admission or consent.
 type Services struct {
 	Bootstrap        func(string, []string) (bootstrap.Plan, error)
 	Audit            func(string, []string) ([]byte, error)
 	Verify           func(string) ([]byte, error)
+	VerifyWorkflow   func(string, io.Reader) ([]byte, bool, error)
 	Version          string
 	InteractiveInput bool
 }
@@ -30,14 +32,15 @@ const auditUsage = "ci-trust audit PATH [--format human|json] [--platform linux|
 const reportUsage = "ci-trust report [--input FILE|-] [--format human|json]\n"
 const effects = "Offline/read-only: no execution, network, hidden storage, or writes.\nExit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.\n"
 const bootstrapUsage = "ci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]\nDry-run only: no apply behavior; conditional drafts are not executed or enforced.\n"
-const verifyUsage = "ci-trust verify PATH --check lint [--format human|json]\nOwned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
-const usage = auditUsage + reportUsage + bootstrapUsage + verifyUsage + "ci-trust --help\nci-trust --version\n" + effects
+const verifyUsage = "ci-trust verify PATH --check lint [--format human|json] [--workflow-request -]\nOwned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
+const workflowEffects = "Without --workflow-request: offline/read-only valid-report exit 0, including UNVERIFIABLE.\n--workflow-request -: bounded non-authorizing request on stdin; owned protected GitHub workflow only, never host fallback.\nWorkflow exit 0: just-produced owned sensitivity; 1: unavailable, insensitive, unverifiable or operational error; 2: invalid invocation.\n"
+const usage = auditUsage + reportUsage + bootstrapUsage + verifyUsage + "ci-trust --help\nci-trust --version\n" + "Audit/report/bootstrap: " + effects + workflowEffects
 const maxInput = 8 << 20
 
 type invocation struct {
 	command, path, input, format string
 	platforms                    []string
-	dryRun, lint                 bool
+	dryRun, lint, workflow       bool
 }
 
 func parse(args []string) (invocation, bool) {
@@ -66,7 +69,7 @@ func parse(args []string) (invocation, bool) {
 				v.dryRun = true
 				continue
 			}
-			if a != "--format" && !(a == "--platform" && (v.command == "audit" || v.command == "bootstrap")) && !(a == "--input" && v.command == "report") && !(a == "--check" && v.command == "verify") {
+			if a != "--format" && !(a == "--platform" && (v.command == "audit" || v.command == "bootstrap")) && !(a == "--input" && v.command == "report") && !((a == "--check" || a == "--workflow-request") && v.command == "verify") {
 				return v, false
 			}
 			if i+1 >= len(args) {
@@ -82,6 +85,11 @@ func parse(args []string) (invocation, bool) {
 			}
 			seen[a] = true
 			switch a {
+			case "--workflow-request":
+				if value != "-" {
+					return v, false
+				}
+				v.workflow = true
 			case "--check":
 				if value != "lint" {
 					return v, false
@@ -112,7 +120,8 @@ func parse(args []string) (invocation, bool) {
 }
 
 // Run validates the entire invocation before reading input or invoking a producer.
-// Exit codes are 0 for valid data, 1 for operational failure, 2 for usage.
+// Ordinary valid reports exit 0. Explicit workflow verification additionally
+// requires the trusted producer's sensitivity disposition; unresolved exits 1.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Services) int {
 	fail := func(message string) int { fmt.Fprintln(stderr, "ci-trust: "+message); return 1 }
 	write := func(data []byte) int {
@@ -145,7 +154,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Serv
 		case "bootstrap":
 			return write([]byte(bootstrapUsage + effects))
 		case "verify":
-			return write([]byte(verifyUsage + effects))
+			return write([]byte(verifyUsage + workflowEffects))
 		}
 	}
 	v, ok := parse(args)
@@ -172,11 +181,19 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Serv
 	}
 	var data []byte
 	var err error
+	workflowPassed := false
 	if v.command == "verify" {
-		if services.Verify == nil {
-			return fail("lint verification service unavailable")
+		if v.workflow {
+			if services.VerifyWorkflow == nil {
+				return fail("lint verification service unavailable")
+			}
+			data, workflowPassed, err = services.VerifyWorkflow(v.path, stdin)
+		} else {
+			if services.Verify == nil {
+				return fail("lint verification service unavailable")
+			}
+			data, err = services.Verify(v.path)
 		}
-		data, err = services.Verify(v.path)
 		if err != nil {
 			return fail("lint verification failed")
 		}
@@ -233,7 +250,13 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, services Serv
 	for _, record := range records {
 		fmt.Fprintln(stderr, safe(record.Code)+": "+safe(record.Message))
 	}
-	return write(output)
+	if code := write(output); code != 0 {
+		return code
+	}
+	if v.workflow && !workflowPassed {
+		return 1
+	}
+	return 0
 }
 
 // safe escapes terminal controls, including C1 and bidi format characters.

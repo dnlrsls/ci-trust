@@ -12,7 +12,7 @@ import (
 	"github.com/dnlrsls/ci-trust/internal/evidence"
 )
 
-const verifyHelp = "ci-trust verify PATH --check lint [--format human|json]\nOwned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
+const verifyHelp = "ci-trust verify PATH --check lint [--format human|json] [--workflow-request -]\nOwned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
 
 func expectedHeldEmptyReport(t *testing.T) ([]byte, string) {
 	t.Helper()
@@ -50,6 +50,18 @@ func expectedHeldEmptyReport(t *testing.T) ([]byte, string) {
 	return canonical, stderr
 }
 
+func TestPublicWorkflowRequestHeldAndNoEffects(t *testing.T) {
+	binary := buildPublicBinary(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "counter"), []byte("7\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before := fixtureBytes(t, root)
+	code, out, stderr := invokePublic(t, binary, []byte("not an approval or valid request"), "verify", root, "--check", "lint", "--workflow-request", "-", "--format", "json")
+	assertPublic(t, code, out, stderr, 1, "", "ci-trust: lint verification failed\n")
+	unchangedFixture(t, root, before)
+}
+
 func TestPublicVerifyHeldReportAndNoEffects(t *testing.T) {
 	binary := buildPublicBinary(t)
 	root := t.TempDir()
@@ -68,7 +80,7 @@ func TestPublicVerifyHeldReportAndNoEffects(t *testing.T) {
 	code, out, stderr = invokePublic(t, binary, want, "report", "--format", "json")
 	assertPublic(t, code, out, stderr, 0, string(want), wantErr)
 	code, out, stderr = invokePublic(t, binary, nil, "help", "verify")
-	assertPublic(t, code, out, stderr, 0, verifyHelp+"Offline/read-only: no execution, network, hidden storage, or writes.\nExit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.\n", "")
+	assertPublic(t, code, out, stderr, 0, verifyHelp+publicWorkflowEffects, "")
 	for _, args := range [][]string{
 		{"verify", root}, {"verify", root, "--check", "other"}, {"verify", root, "--check", "lint", "--check", "lint"},
 		{"verify", root, "--check", "lint", "--approve"}, {"verify", root, "--check", "lint", "--platform", "linux"},
