@@ -16,8 +16,22 @@ never extracts files or executes payloads. Limits: ZIP 96 MiB, image 256 MiB,
 inventory/other metadata 16 MiB each, checksum manifest 4 KiB, total 352 MiB.
 Its output is archive/inventory **data only**, not a load capability.
 
-Authenticated producer/run/artifact API validation, delivery, an independently
-checked exact image, the separate gated lint loader and workflow composition
-remain separate unfinished steps. No download, image load or target execution
-is enabled here. Compiled hold checks must precede those future effects; request
-or report fields, caller catalog copies and this decoder cannot authorize them.
+The source delivery wrapper checks the compiled gate before token, clock or
+client construction. Behind that gate it re-audits the exact lint review, then
+checks the compiled repository/producer workflow/run/attempt, successful owner
+dispatch, owner preparation approval and artifact origin/digest/size/expiry.
+Preparation approval establishes provenance only, never lint execution consent.
+
+Retrieval follows exactly one authenticated API 302 to a documented HTTPS Azure
+blob account, with no userinfo, fragment or nonstandard port. A fresh request
+sends no API Authorization, Cookie or Referer; further redirects are rejected.
+Shared deadline: 45 seconds, shortened by review/artifact expiry; expiry is
+rechecked after byte verification. Errors never expose the token or signed URL.
+Original metadata-client redirect refusal is unchanged. This code is tested
+with fake HTTP, not a live authenticated download. See [GitHub's artifact API](https://docs.github.com/en/rest/actions/artifacts)
+and [artifact communication domains](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#requirements-for-communication-with-github).
+
+An independently checked exact image, the separate gated lint loader and workflow
+composition remain unfinished. The current gate still prevents delivery or image
+loading. Request/report fields, caller catalog copies and decoded data cannot
+authorize them; no candidate download or target execution was performed.
