@@ -32,3 +32,9 @@ HTTPS client owns `api.github.com`, GET-only paths, no proxy/redirects, a ten-se
 audit deadline and one-MiB responses. Errors never include tokens or response text.
 Tests use fake HTTP metadata; no real GitHub approval/audit or execution is claimed.
 No approval/write endpoint, Environment policy edit or workflow dispatch exists here.
+
+The canonical review now also binds `candidate_artifact`: compiled producer
+workflow/revision/run/attempt, repository/artifact identity, name, size and ZIP
+digest. This existing held candidate is not admitted by its provenance. See
+[the protected artifact contract](lint-artifact-delivery.md) for data-only ZIP
+checks and the still-unfinished authenticated delivery/load composition.
