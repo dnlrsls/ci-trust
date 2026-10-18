@@ -85,12 +85,15 @@ untrusted and preserve traversal/parsing bounds. Do not fetch remote evidence or
 add auto-fix/apply behavior. `verify` remains future work. Bootstrap is strictly
 [conditional dry-run](docs/bootstrap.md); preserve source report references,
 unknown setup preconditions, conflicts, isolated two-pass and no-write proofs.
-Controlled verification has no production Docker backend/trusted image catalog;
-no runtime provisioning, automatic consent or unsandboxed fallback is authorized.
+Controlled lint verification is experimental and outside the v0.1.0 offline
+MVP. Its protected owned GitHub route retains exact-profile admission, consent
+and preflight requirements; ordinary host verification remains UNVERIFIABLE.
+No runtime provisioning, automatic consent or unsandboxed fallback is authorized.
 A later Gentleman-Programming/engram study is opt-in and revision-pinned, uses only
 generic adapters and makes no upstream writes. No such study has been run here.
 
 CI Trust source is licensed under the [MIT License](LICENSE), selected explicitly
 by the maintainer. Preserve its copyright and permission notices. Third-party
-software keeps its own license terms. License selection does not authorize a
-version tag, release publication or controlled runtime execution.
+software keeps its own license terms. Distribution includes [third-party notices](THIRD_PARTY_NOTICES.md) and the
+corresponding unmodified texts in `LICENSES/`. Source licensing does not itself
+authorize a version tag, publication or controlled runtime execution.
