@@ -11,7 +11,9 @@ import (
 	"github.com/dnlrsls/ci-trust/internal/evidence"
 )
 
-const publicHelp = "ci-trust audit PATH [--format human|json] [--platform linux|windows|macos ...]\nci-trust report [--input FILE|-] [--format human|json]\nci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]\nDry-run only: no apply behavior; conditional drafts are not executed or enforced.\n" + verifyHelp + "ci-trust --help\nci-trust --version\nOffline/read-only: no execution, network, hidden storage, or writes.\nExit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.\n"
+const publicHelp = "ci-trust audit PATH [--format human|json] [--platform linux|windows|macos ...]\nci-trust report [--input FILE|-] [--format human|json]\nci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]\nDry-run only: no apply behavior; conditional drafts are not executed or enforced.\n" + verifyHelp + "ci-trust --help\nci-trust --version\nAudit/report/bootstrap: Offline/read-only: no execution, network, hidden storage, or writes.\nExit 0: valid report (including FAIL/UNKNOWN), help/version; 1: operational error; 2: invalid invocation.\n" + publicWorkflowEffects
+
+const publicWorkflowEffects = "Without --workflow-request: offline/read-only valid-report exit 0, including UNVERIFIABLE.\n--workflow-request -: bounded non-authorizing request on stdin; owned protected GitHub workflow only, never host fallback.\nWorkflow exit 0: just-produced owned sensitivity; 1: unavailable, insensitive, unverifiable or operational error; 2: invalid invocation.\n"
 
 func buildPublicBinary(t *testing.T) string {
 	t.Helper()

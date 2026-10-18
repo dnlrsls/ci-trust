@@ -2,7 +2,11 @@
 package main
 
 import (
+	"context"
+	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/dnlrsls/ci-trust/internal/audit"
 	"github.com/dnlrsls/ci-trust/internal/bootstrap"
@@ -23,7 +27,15 @@ func main() {
 			return bootstrap.Scan(path, bootstrap.Options{Platforms: platforms})
 		},
 		Verify:           lintverify.Scan,
+		VerifyWorkflow:   verifyWorkflow,
 		Version:          version,
 		InteractiveInput: term.IsTerminal(int(os.Stdin.Fd())),
 	}))
+}
+
+func verifyWorkflow(path string, request io.Reader) ([]byte, bool, error) {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	data, err := lintverify.ExecuteGitHub(ctx, path, request)
+	return data, err == nil && lintverify.SensitiveReport(data), err
 }
