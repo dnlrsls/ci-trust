@@ -66,7 +66,11 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 		}
 	}
 	reason := safeReason(out.decision.Reason)
-	add(r, "diagnostics", record{"id": evidence.StableID("diagnostic", "lint", reason), "code": reason, "message": "Owned lint sensitivity: " + string(out.decision.Outcome) + ". " + scopeLimit, "source": source})
+	message := "Owned lint sensitivity: " + string(out.decision.Outcome) + ". " + scopeLimit
+	if reason == "LINT_HARNESS_FAILURE" && out.decision.Outcome == ls.Unverifiable {
+		message += out.harness.text()
+	}
+	add(r, "diagnostics", record{"id": evidence.StableID("diagnostic", "lint", reason), "code": reason, "message": message, "source": source})
 	add(r, "limitations", scopeLimit)
 	if productionCatalog().blocked() != "" {
 		add(r, "limitations", "The compiled lint catalog blocks execution; this report cannot grant runtime admission.")

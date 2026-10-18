@@ -45,6 +45,19 @@ job after human review. The Go composition then independently authenticates that
 review before delivery/load/capture. Only plan/report JSON is retained for seven
 days; no runtime image, source, cache or credential is uploaded.
 
+## Failed harness diagnostics
+
+`LINT_HARNESS_FAILURE` remains UNVERIFIABLE, never a lint PASS. Its message adds
+only allowlisted failed role, stage, capture status, reported outer exit and
+runtime reason code. Stages distinguish `OUTER_CAPTURE`, `OUTER_EXIT`,
+`OUTER_STDERR` and `RECEIPT_OR_ESLINT_OUTPUT`; the last intentionally does not
+claim whether framing or strict ESLint output parsing failed. An outer launcher
+failure is not the expected inner FAULT exit 1. Raw stdout/stderr, arbitrary
+runtime reasons, paths and credentials are never included. Unknown values are
+sanitized or the detail is omitted. This metadata does not establish Node
+execution or identify an ELF/Node/Docker root cause; no acceptance, consent,
+resource limit, plan digest or schema changes follow from it.
+
 Source admission permits non-authorizing planning in that fixed context, not
 execution without separate exact review. No workflow was dispatched or externally
 validated here; no Node, Docker or image was executed,

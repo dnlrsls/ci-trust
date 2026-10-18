@@ -88,7 +88,7 @@ func evaluate(ctx context.Context, snapshot string, d dependencies) outcome {
 		observation := ls.DecodeESLintReceipt(item.Role, p.Identity, p.digest(), captured.capture)
 		observations = append(observations, observation)
 		if observation.Status != ls.Completed {
-			return outcome{decision: ls.Result{Outcome: ls.Unverifiable, Reason: "LINT_HARNESS_FAILURE", Scope: "TOOL_FIXTURE"}, observations: observations}
+			return outcome{decision: ls.Result{Outcome: ls.Unverifiable, Reason: "LINT_HARNESS_FAILURE", Scope: "TOOL_FIXTURE"}, observations: observations, harness: failedHarness(item.Role, captured)}
 		}
 	}
 	return outcome{decision: ls.Classify(observations), observations: observations}

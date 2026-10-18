@@ -218,7 +218,7 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 		if result.Outcome == runner.Completed {
 			status = ls.Completed
 		}
-		return captureResult{cleanupVerified: result.CleanupVerified, capture: ls.ESLintCapture{Status: status, ExitCode: result.ExitCode, Stdout: []byte(result.Stdout), Stderr: []byte(result.Stderr)}}
+		return captureResult{cleanupVerified: result.CleanupVerified, runtimeCode: runtimeFailureCode(result.Reason), capture: ls.ESLintCapture{Status: status, ExitCode: result.ExitCode, Stdout: []byte(result.Stdout), Stderr: []byte(result.Stderr)}}
 	}
 	out := evaluate(ctx, snapshot, d)
 	if changed {
