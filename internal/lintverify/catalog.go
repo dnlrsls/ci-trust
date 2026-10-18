@@ -1,5 +1,5 @@
-// Package lintverify integrates owned lint data with a closed production gate.
-// It does not admit an image, authenticate a live review or execute a tool.
+// Package lintverify integrates fixed owned lint workflow services behind a
+// compiled closed gate. Planning data and receipts never grant admission.
 package lintverify
 
 import (
@@ -79,7 +79,7 @@ func (p plan) digest() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// A real review transport is intentionally unavailable. Tests alone construct
+// Only gated authenticated review can mint a production decision. Tests use
 // synthetic private decisions; a framed tool receipt is never such a decision.
 type approval struct {
 	binding string
