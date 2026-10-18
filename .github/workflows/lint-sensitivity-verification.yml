@@ -88,7 +88,7 @@ jobs:
         with:
           go-version: '1.26.4'
           cache: false
-      - name: Build the same fixed Go control after human Environment review
+      - name: Build the public CLI after human Environment review
         shell: bash
         run: |
           set -euo pipefail
@@ -98,7 +98,7 @@ jobs:
           mkdir -p "$state/tmp" "$state/cache" "$state/modcache"
           export GOCACHE="$state/cache" GOMODCACHE="$state/modcache" TEMP="$state/tmp" TMP="$state/tmp" TMPDIR="$state/tmp"
           timeout --signal=TERM --kill-after=10s 120s go mod download
-          go build -mod=readonly -trimpath -buildvcs=false -ldflags=-buildid= -o "$state/controlled-lint" ./internal/lintverify/cmd/controlled-lint
+          go build -mod=readonly -trimpath -buildvcs=false -ldflags=-buildid= -o "$state/ci-trust" ./cmd/ci-trust
           test -z "$(git status --porcelain --untracked-files=all)"
       - name: Verify exact lint review and fixed roles - no approval arguments
         id: verify
@@ -113,7 +113,7 @@ jobs:
           printf '%s' "$REQUEST" | base64 --decode > "$state/plan.json"
           install -d -m 700 "$state/docker-config"
           set +e
-          timeout --signal=TERM --kill-after=10s 600s "$state/controlled-lint" verify < "$state/plan.json" > "$state/report.json"
+          timeout --signal=TERM --kill-after=10s 600s "$state/ci-trust" verify "$GITHUB_WORKSPACE" --check lint --workflow-request - --format json < "$state/plan.json" > "$state/report.json"
           result=$?
           set -e
           test -z "$(git status --porcelain --untracked-files=all)"

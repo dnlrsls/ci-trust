@@ -22,9 +22,11 @@ review, fixed image/provenance, preflight, cleanup/source preservation and stric
 receipt classification remain owned by the existing engine. No pins, admission,
 Environment settings or security policy were changed by exposing this entry.
 
-The internal `controlled-lint` remains compatible for preparation and its existing
-verify operation. Public-command workflow wiring is a separate source step; no
-workflow was dispatched and no Node/npm/ESLint/Docker or image was executed to
-implement this route. Synthetic Go tests are not the real lint triad.
+The protected workflow prepares the fixed request with `controlled-lint prepare`,
+then builds and invokes the public CLI in request mode after human Environment
+review. Its exit status is propagated unchanged. The internal `controlled-lint
+verify` operation remains compatible, but is not the workflow's verification
+entry. No workflow was dispatched and no Node/npm/ESLint/Docker or image was
+executed to implement this route. Synthetic Go tests are not the real lint triad.
 
 See [CLI contract](cli.md) and [manual workflow control](lint-workflow-control.md).

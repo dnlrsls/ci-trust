@@ -40,6 +40,9 @@ No installation or licensed release/distribution is claimed.
 - `verify PATH --check lint` exposes [gated owned-fixture reporting](docs/lint-offline-integration.md).
   Production remains UNVERIFIABLE: Node hold and unadmitted runtime block execution;
   no project configuration/plugin is loaded and no real lint sensitivity is claimed.
+  The explicit [workflow request mode](docs/lint-public-cli.md) connects only to
+  the protected owned GitHub route, with strict sensitivity exit status; it is
+  still denied by compiled policy, never a host execution fallback.
 - Exit **0** means valid report/plan (including findings/FAIL/UNKNOWN), help or version;
   **1** means operational failure; **2** means invalid invocation. Report input is
   bounded to 8 MiB; interactive stdin is refused.
