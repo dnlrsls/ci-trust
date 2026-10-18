@@ -9,6 +9,8 @@ import (
 	"io"
 	"regexp"
 	"time"
+
+	"github.com/dnlrsls/ci-trust/internal/lintcatalog"
 )
 
 var reviewPlanUnavailable = errors.New("exact lint review plan unavailable")
@@ -17,20 +19,21 @@ var reviewRevision = regexp.MustCompile(`^[a-f0-9]{40}([a-f0-9]{24})?$`)
 // githubReviewPlan is planning data, NEVER an approval or admission capability.
 // The separate GitHub audit must authenticate its context and human review.
 type githubReviewPlan struct {
-	Domain        string `json:"domain"`
-	Disposition   string `json:"disposition"`
-	Repository    string `json:"repository"`
-	Workflow      string `json:"workflow"`
-	Environment   string `json:"environment"`
-	EnvironmentID int64  `json:"environment_id"`
-	Revision      string `json:"revision"`
-	Branch        string `json:"branch"`
-	RunID         int64  `json:"run_id"`
-	Attempt       int    `json:"attempt"`
-	IssuedAt      string `json:"issued_at"`
-	ExpiresAt     string `json:"expires_at"`
-	Plan          plan   `json:"plan"`
-	BindingDigest string `json:"binding_digest"`
+	Domain        string               `json:"domain"`
+	Disposition   string               `json:"disposition"`
+	Repository    string               `json:"repository"`
+	Workflow      string               `json:"workflow"`
+	Environment   string               `json:"environment"`
+	EnvironmentID int64                `json:"environment_id"`
+	Revision      string               `json:"revision"`
+	Branch        string               `json:"branch"`
+	RunID         int64                `json:"run_id"`
+	Attempt       int                  `json:"attempt"`
+	IssuedAt      string               `json:"issued_at"`
+	ExpiresAt     string               `json:"expires_at"`
+	Artifact      lintcatalog.Artifact `json:"candidate_artifact"`
+	Plan          plan                 `json:"plan"`
+	BindingDigest string               `json:"binding_digest"`
 }
 
 func makeGitHubReviewPlan(p plan, revision string, run int64, now time.Time) (githubReviewPlan, error) {
@@ -49,6 +52,7 @@ func makeGitHubReviewPlan(p plan, revision string, run int64, now time.Time) (gi
 		Environment: "ci-trust-controlled-verification", EnvironmentID: 24415568518,
 		Revision: revision, Branch: "main", RunID: run, Attempt: 1,
 		IssuedAt: text, ExpiresAt: issued.Add(15 * time.Minute).Format(time.RFC3339), Plan: p,
+		Artifact: lintcatalog.CurrentArtifact(),
 	}
 	r.BindingDigest = r.digest()
 	return r, nil
