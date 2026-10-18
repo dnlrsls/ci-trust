@@ -126,13 +126,13 @@ do not relax any preparation or admission gate.
 
 ## What the artifacts do NOT prove
 
-Node remains on the previously documented security hold. Package lock generation
-selects transitive versions at that moment; the returned lock and tarball integrity
-must be independently reviewed before any catalog entry or later reproduction.
-The image is a candidate, not a production runtime. ELF/shared-library compatibility
-is NOT yet checked. Distroless provenance and full file policy still need review.
-The archive inspector compares against the prepared inventory; it is not the
-independent trusted lint inspector required for production admission.
+Preparation never admits a newly produced artifact. The existing exact candidate
+has a separate [bounded source disposition](lint-admission-policy.md), not an
+inference from producer hold fields. Lock generation selects transitive versions;
+producer checks and independently reviewed evidence have distinct limits. Static
+ELF availability does not establish live compatibility. The preparation inspector
+is not the separate independent lint inspector. Source admission records supplier
+trust and residual risks, not a complete upstream security or provenance audit.
 
 Repeated serialization checks determinism within this process, not independent
 clean offline reconstruction, upstream binary reproducibility, runtime compatibility

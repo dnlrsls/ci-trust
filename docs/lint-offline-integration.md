@@ -1,8 +1,9 @@
-# Local lint integration: execution gate closed
+# Local lint integration: cold reporting
 
 The private `internal/lintverify` catalog describes the prepared ESLint 10.12.0 /
-Node 24.22.0 candidate. Its Node security hold is **true** and policy admission is
-**false**. Describing the image is not admitting it. No runtime is constructed.
+Node 24.22.0 profile. Its [source disposition](lint-admission-policy.md) now records
+bounded risk acceptance and admission. Describing the image is not admitting it;
+ordinary cold reporting still constructs no runtime.
 
 The catalog check precedes every review, clock, source remeasurement, preflight
 and capture dependency. A held or unadmitted candidate returns an internal
@@ -21,8 +22,8 @@ source digest checks immediately before and after every capture. It decodes the
 owned receipt before classifying the complete triplet. Denied/stale decisions,
 source drift, missing/crashed/timed-out capture, bad framing and unverified cleanup
 cannot produce positive efficacy. Post-capture source measurement also runs on
-failure. Private fake dependencies are test-only; no live review channel or
-runtime factory is composed in production.
+failure. Private fake dependencies are test-only. Live services are composed only
+in the separate protected GitHub request route, never ordinary cold `Scan`.
 
 The bounded `lintverify.Scan` service now composes the existing audit snapshot
 with lint-specific evidence-v1 reporting. Production returns UNVERIFIABLE, never
@@ -35,7 +36,7 @@ CI enforcement are not upgraded by owned fixture observations.
 
 Private tests map simulated complete triplets to TOOL_FIXTURE-only v1 capability
 records. Those tests are not observed execution evidence. The public
-`verify PATH --check lint` now composes only this held service and the existing v1
+`verify PATH --check lint` without request mode composes only this cold service and the existing v1
 renderer; it does not accept approval flags, input captures or caller-selected
 commands. Valid unresolved reports exit 0, not a sensitivity PASS. Invocation
 validation precedes producers and input reads. Existing smoke runner and human
@@ -45,5 +46,5 @@ trusted adapter, not authentication or observed isolation by themselves.
 No Node, npm, ESLint, owned launcher, loader or Docker execution is established
 or authorized here. Synthetic tests cannot establish real sensitivity, Linux
 isolation, image admission, ABI compatibility or independent reconstruction.
-Node hold removal, a real lint runtime profile, live authenticated consent and
-real CLEAN-pass / FAULT-expected-fail / RESTORED-pass evidence remain separate.
+Source admission is recorded separately; live authenticated consent and real
+CLEAN-pass / FAULT-expected-fail / RESTORED-pass evidence remain separate.

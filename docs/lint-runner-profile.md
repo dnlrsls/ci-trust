@@ -5,9 +5,11 @@ image, module identity, receipt binding and exact resource limits. It accepts no
 caller image, argv, resource overrides or target input. Planning data is not consent.
 
 `NewLintOwned` checks the compiled lint gate before runtime or source callbacks.
-The current Node hold denies construction. `NewOwned` still accepts only its old
-smoke profiles and old plan JSON/digests are unchanged. Local Docker lint preflight
-also denies the held profile before client access; no lint image loader is added.
+The [source-admitted profile](lint-admission-policy.md) may be constructed, but
+absent/stale consent still denies before runtime/snapshot callbacks. `NewOwned`
+retains only its old smoke profiles and old plan JSON/digests. Local Docker
+preflight must still verify the daemon/image; the separate lint loader rechecks
+exact bytes. Revoked compiled admission still denies before client access.
 
 The fixed vector selects `/ci-trust/owned-eslint --role ROLE --binding DIGEST`,
 UID/GID 65532, `/work`, no network/mounts/capabilities and bounded read-only/scratch

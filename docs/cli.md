@@ -18,7 +18,7 @@ ci-trust report [--input FILE|-] [--format human|json]
 ci-trust bootstrap PATH --dry-run [--format human|json] [--platform linux|windows|macos ...]
 Dry-run only: no apply behavior; conditional drafts are not executed or enforced.
 ci-trust verify PATH --check lint [--format human|json] [--workflow-request -]
-Owned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).
+Owned ESLint 10.12.0 / Node 24.22.0: source-admitted owned fixture profile; ordinary host verification remains UNVERIFIABLE.
 TOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.
 ci-trust --help
 ci-trust --version
@@ -39,8 +39,8 @@ existing v1 report in human or JSON format. Both PATH and exactly one literal
 reports or platform overrides are accepted. `--check` is not an audit/report/
 bootstrap option. For option-looking PATH values, put options before `-- PATH`.
 
-Production is **UNVERIFIABLE**, not sensitivity success: Node security hold and
-unadmitted catalog remain closed before review/runtime access. Unsupported project
+Ordinary host verification is **UNVERIFIABLE**, not sensitivity success:
+source admission of the exact owned profile supplies no local execution services. Unsupported project
 configuration/plugins are not loaded and yield an explicit diagnostic. A missing
 genuine declaration anchor never creates a fictional CHECK. TOOL_FIXTURE output
 cannot establish project efficacy, historical CI execution or enforcement.
@@ -50,7 +50,7 @@ requires separately authenticated exact-plan consent/preflight and ordered CLEAN
 exit0, FAULT exit1 with `no-debugger` error at1:1, RESTORED exit0 under an admitted
 runtime. The normal invocation cannot run that sequence. Private simulated tests
 and the internal launcher do not admit it. The optional request-data route below
-is still denied by compiled policy. See [integration limits](lint-offline-integration.md).
+still requires the fixed trusted context and exact authenticated review. See [integration limits](lint-offline-integration.md).
 
 ### Explicit protected workflow request
 
@@ -64,7 +64,8 @@ In this explicit mode, a validated just-produced owned sensitive report exits 0.
 An insensitive or UNVERIFIABLE report is still emitted but exits 1; operational
 errors exit 1 without report bytes; invalid arguments exit 2. Other commands and
 normal `verify` keep their previous exit meanings and do not consume workflow data.
-See [public route limits](lint-public-cli.md). Current production remains held.
+See [public route limits](lint-public-cli.md). Only the exact source-admitted
+profile may proceed, and separate authenticated review remains mandatory.
 
 ## Pinned text and rendering
 
@@ -170,5 +171,6 @@ unsafe yes flag or host-shell fallback. Bootstrap remains conditional dry-run
 proposals, never apply.
 Normal commands do not execute validators/hooks/scripts/package managers, use
 network/credentials or write hidden reports. Explicit workflow request mode can
-reach only the separately gated owned GitHub composition; current compiled policy
-still prevents all live review/runtime effects.
+reach only the separately gated owned GitHub composition under the
+[bounded admission disposition](lint-admission-policy.md). Source admission alone
+cannot replace exact review or authorize a live runtime.

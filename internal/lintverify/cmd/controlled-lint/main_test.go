@@ -11,7 +11,8 @@ import (
 type unreadInput struct{}
 
 func (unreadInput) Read([]byte) (int, error) { panic("command read input before gate") }
-func TestControlledLintHelpArgsAndClosedExecution(t *testing.T) {
+func TestControlledLintHelpArgsAndUntrustedScope(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
 	for _, tc := range []struct {
 		args     []string
 		code     int
@@ -22,8 +23,8 @@ func TestControlledLintHelpArgsAndClosedExecution(t *testing.T) {
 		{[]string{"verify", "--approve"}, 2, "", "controlled-lint: invalid arguments\n"},
 		{[]string{"prepare", "--image", "unowned"}, 2, "", "controlled-lint: invalid arguments\n"},
 		{[]string{"execute"}, 2, "", "controlled-lint: invalid arguments\n"},
-		{[]string{"prepare"}, 1, "", "controlled-lint: NODE_SECURITY_HOLD\n"},
-		{[]string{"verify"}, 1, "", "controlled-lint: NODE_SECURITY_HOLD\n"},
+		{[]string{"prepare"}, 1, "", "controlled-lint: workflow unavailable\n"},
+		{[]string{"verify"}, 1, "", "controlled-lint: workflow unavailable\n"},
 	} {
 		var out, stderr bytes.Buffer
 		code := run(context.Background(), tc.args, unreadInput{}, &out, &stderr)

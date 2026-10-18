@@ -3,8 +3,9 @@
 The selected origin is the protected GitHub Actions lint preparation artifact,
 not a registry or an arbitrary local archive. `lintcatalog.CurrentArtifact()`
 returns compiled repository/producer workflow/revision/run/attempt and artifact
-ID/name/size/ZIP digest data. It currently describes the existing **held** Node
-24.22.0 candidate; it is not a patched candidate, admission or execution consent.
+ID/name/size/ZIP digest data. It describes the exact Node 24.22.0 candidate with
+separate [bounded source admission](lint-admission-policy.md); these provenance
+data are not a patched-runtime claim, admission authority or execution consent.
 
 The canonical GitHub review document binds this complete descriptor as
 `candidate_artifact`, in addition to the fixed runtime plan. Recomputing a digest
@@ -32,6 +33,8 @@ with fake HTTP, not a live authenticated download. See [GitHub's artifact API](h
 and [artifact communication domains](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#requirements-for-communication-with-github).
 
 The separate independently inspecting lint loader and workflow composition exist
-as closed source. Actual authenticated delivery, loading and compatibility remain
-unproved. The current gate still prevents delivery or image loading. Request/report fields, caller catalog copies and decoded data cannot
-authorize them; no candidate download or target execution was performed.
+as separately authenticated services. Actual delivery, loading and compatibility
+remain unproved despite source admission. Exact human review and all provenance,
+expiry and image checks remain mandatory. Request/report fields, caller catalog
+copies and decoded data cannot authorize effects; no candidate download or target
+execution was performed.

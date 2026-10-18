@@ -12,8 +12,9 @@ import (
 
 type unreadWorkflow struct{}
 
-func (unreadWorkflow) Read([]byte) (int, error) { panic("held workflow read caller data") }
-func TestLintWorkflowPublicGateBeforeInputs(t *testing.T) {
+func (unreadWorkflow) Read([]byte) (int, error) { panic("untrusted workflow read caller data") }
+func TestLintWorkflowPublicScopeBeforeInputs(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
 	if b, e := PrepareGitHubReview("unowned"); e == nil || len(b) != 0 {
 		t.Error("held plan read source")
 	}
@@ -166,6 +167,7 @@ func TestLintWorkflowComposesExactTriplet(t *testing.T) {
 	}
 	s, f := workflowFixture(t, "sensitive")
 	s.catalog = productionCatalog()
+	s.catalog.securityHold = true
 	if got := evaluateGitHubWorkflow(context.Background(), f.r.Plan.Identity.Snapshot, f.r, s); got.decision.Reason != "NODE_SECURITY_HOLD" || len(f.events) != 0 {
 		t.Error("private composed hold crossed seam")
 	}

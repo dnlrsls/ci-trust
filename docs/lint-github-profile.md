@@ -1,13 +1,15 @@
 # Closed lint profile and separate GitHub consent
 
 `internal/lintcatalog` is the single owner of the existing compiled candidate
-identities and closed policy. `Current` returns value-owned metadata, not approval.
+identities and scoped admission policy. `Current` returns value-owned metadata, not approval.
 Changing a returned `State`, decoded report or plan cannot change `BlockedReason`.
-The current Node security hold takes precedence over missing image admission.
+The exact profile now has [risk-accepted source admission](lint-admission-policy.md).
+If revoked, Node hold still takes precedence over missing image admission.
 
 `lintverify` composes its existing private catalog from that owner. This extraction
-does not change held report output, plan serialization, runner allowlists, smoke
-consent, Environment settings or runtime access. No lint execution is admitted.
+originally preserved the held report. The later scoped admission changes only
+the cold diagnostic to execution-unavailable, not plan serialization, runner
+allowlists, smoke consent or Environment settings. No actual run is approved.
 
 The selected consent channel has a separate manual lint workflow source using
 the existing protected Environment and exact lint-specific human review. The

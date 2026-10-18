@@ -36,7 +36,7 @@ func (r *lintRuntimeFixture) snapshot(context.Context) (string, error) {
 	r.snapshots++
 	return strings.Repeat("a", 64), nil
 }
-func TestFixedLintPlanAndClosedConstruction(t *testing.T) {
+func TestFixedLintAdmissionStillRequiresExactConsent(t *testing.T) {
 	binding := strings.Repeat("b", 64)
 	for _, role := range []ls.Role{ls.Clean, ls.Fault, ls.Restored} {
 		p, e := FixedLintPlan(strings.Repeat("a", 64), role, binding)
@@ -47,8 +47,13 @@ func TestFixedLintPlanAndClosedConstruction(t *testing.T) {
 			t.Fatal("wrong fixed plan", p)
 		}
 		rt := &lintRuntimeFixture{}
-		if r, e := NewLintOwned(rt, p, rt.snapshot); e == nil || e.Error() != "NODE_SECURITY_HOLD" || r != nil || rt.calls != 0 || rt.snapshots != 0 {
-			t.Fatal("held construction crossed dependency")
+		r, e := NewLintOwned(rt, p, rt.snapshot)
+		if e != nil || r == nil || rt.calls != 0 || rt.snapshots != 0 {
+			t.Fatal("scoped admission crossed dependency", e)
+		}
+		got := r.Execute(context.Background(), p, Consent{})
+		if got.Outcome != Denied || got.ExitCode != -1 || got.Reason != "absent or stale explicit consent" || got.CleanupVerified || rt.calls != 0 || rt.snapshots != 0 {
+			t.Fatal("admission substituted for consent", got)
 		}
 		if r, e := NewOwned(rt, p, rt.snapshot); e == nil || r != nil {
 			t.Fatal("legacy constructor admitted lint")
@@ -101,17 +106,18 @@ func (c *lintClientCounter) attach(context.Context, string, string, int, time.Du
 	c.calls++
 	return "", "", errors.New("unexpected attach")
 }
-func TestLintLocalDockerGateAndEmptyInput(t *testing.T) {
+func TestLintLocalDockerPreflightAndEmptyInput(t *testing.T) {
 	p, _ := FixedLintPlan(strings.Repeat("a", 64), ls.Clean, strings.Repeat("b", 64))
 	client := &lintClientCounter{}
 	d := &LocalDocker{client: client, host: "linux"}
-	if e := d.Preflight(context.Background(), p); e == nil || client.calls != 0 {
-		t.Fatal("held preflight reached client")
+	if e := d.Preflight(context.Background(), p); e == nil || e.Error() != "daemon metadata: unexpected client call" || client.calls != 1 {
+		t.Fatal("unsupported daemon passed preflight", e, client.calls)
 	}
+	before := client.calls
 	// Trusted test-only lifecycle fixture; no daemon or production admission.
 	d.plan = p
 	d.ready = true
-	if _, e := d.startCaptured(context.Background(), "ci-trust-1-1", dockerArgs(p, "ci-trust-1-1"), "unowned"); e == nil || client.calls != 0 {
+	if _, e := d.startCaptured(context.Background(), "ci-trust-1-1", dockerArgs(p, "ci-trust-1-1"), "unowned"); e == nil || client.calls != before {
 		t.Fatal("nonempty input reached client")
 	}
 	rt := &lintRuntimeFixture{}

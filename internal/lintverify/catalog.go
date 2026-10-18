@@ -1,5 +1,5 @@
 // Package lintverify integrates fixed owned lint workflow services behind a
-// compiled closed gate. Planning data and receipts never grant admission.
+// compiled catalog. Planning data and receipts never grant admission.
 package lintverify
 
 import (

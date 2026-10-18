@@ -1,5 +1,9 @@
 # Lint runtime preparation and integration plan (#9)
 
+Historical 2026-10-15 design snapshot: later runner/receipt/public-route work and
+[bounded source admission](lint-admission-policy.md) supersede the missing-source
+and held-policy claims below. Real execution evidence is still outstanding.
+
 Status: **design candidate, not an admitted runtime or execution approval**.
 Reviewed against public upstream sources on 2026-10-15. No dependency resolution,
 installation, image build/load, Node/ESLint execution, workflow dispatch or remote

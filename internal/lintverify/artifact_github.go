@@ -15,7 +15,7 @@ import (
 )
 
 // No caller approval, catalog or locator is authority. Check before even reading
-// a credential or constructing a client; production remains held.
+// a credential or constructing a client; admission does not replace review.
 func deliverLintArtifact(ctx context.Context, r githubReviewPlan) (deliveredArtifact, error) {
 	if lintcatalog.BlockedReason() != "" {
 		return deliveredArtifact{}, artifactUnavailable

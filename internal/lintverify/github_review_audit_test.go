@@ -117,7 +117,8 @@ func TestLintGitHubHTTPBoundsAndRedirect(t *testing.T) {
 	}
 }
 
-func TestLintGitHubProductionRemainsClosed(t *testing.T) {
+func TestLintGitHubProductionRequiresCredentialAndReview(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
 	_, r, _, _ := lintAuditFixture(t)
 	before := r
 	if a, e := reviewGitHub(context.Background(), r.Plan, r); e == nil || a != (approval{}) || r != before {

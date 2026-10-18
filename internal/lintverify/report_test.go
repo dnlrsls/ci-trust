@@ -23,12 +23,12 @@ func decodeReport(t *testing.T, b []byte) map[string]any {
 	}
 	return r
 }
-func TestScanClosedAndUnsafeConfigurationsAreReadOnly(t *testing.T) {
+func TestScanColdAndUnsafeConfigurationsAreReadOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name, code       string
 		declared, unsafe bool
 	}{
-		{"empty", "NODE_SECURITY_HOLD", false, false}, {"declared", "NODE_SECURITY_HOLD", true, false}, {"unsafe", "UNSUPPORTED_LINT_CONFIGURATION", true, true},
+		{"empty", "LINT_EXECUTION_UNAVAILABLE", false, false}, {"declared", "LINT_EXECUTION_UNAVAILABLE", true, false}, {"unsafe", "UNSUPPORTED_LINT_CONFIGURATION", true, true},
 		{"plugin", "UNSUPPORTED_LINT_CONFIGURATION", true, true}, {"embedded-config", "UNSUPPORTED_LINT_CONFIGURATION", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
