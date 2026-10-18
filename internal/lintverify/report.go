@@ -70,6 +70,9 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 	if reason == "LINT_HARNESS_FAILURE" && out.decision.Outcome == ls.Unverifiable {
 		message += out.harness.text()
 	}
+	if reason == "LINT_PREFLIGHT_UNAVAILABLE" && out.decision.Outcome == ls.Unverifiable {
+		message += preflightDetail(out.preflightStage)
+	}
 	add(r, "diagnostics", record{"id": evidence.StableID("diagnostic", "lint", reason), "code": reason, "message": message, "source": source})
 	add(r, "limitations", scopeLimit)
 	if productionCatalog().blocked() != "" {

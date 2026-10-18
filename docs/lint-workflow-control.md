@@ -62,3 +62,15 @@ Source admission permits non-authorizing planning in that fixed context, not
 execution without separate exact review. No workflow was dispatched or externally
 validated here; no Node, Docker or image was executed,
 no new candidate was fetched, and no Environment approval/settings were changed.
+
+## Failed preflight diagnostics
+
+`LINT_PREFLIGHT_UNAVAILABLE` remains UNVERIFIABLE and precedes the case loop.
+Its message may add only `REVIEW_BEFORE_DELIVERY`,
+`ARTIFACT_DELIVERY_OR_REVIEW`, `RUNTIME_CREATION` or `IMAGE_LOAD`. The combined
+delivery/review stage intentionally does not guess whether delivery, empty
+content or the following review check failed. Source-change precedence remains
+`LINT_SOURCE_CHANGED`, without this detail. Unknown stages are suppressed.
+These stages identify a workflow boundary, not the underlying cause or Node
+execution. No raw errors, outputs, paths or credentials are reported; acceptance,
+consent, pins, limits, report schema and diagnostic IDs do not change.
