@@ -71,16 +71,16 @@ func evaluate(ctx context.Context, snapshot string, d dependencies) outcome {
 		// assertion alone never establishes completed/preserved execution.
 		after, err := d.snapshot()
 		if err != nil || after != snapshot {
-			return unresolved("LINT_SOURCE_CHANGED")
+			return captureFailure("LINT_SOURCE_CHANGED", item.Role, captured)
 		}
 		if !captured.cleanupVerified {
-			return unresolved("LINT_CLEANUP_UNVERIFIED")
+			return captureFailure("LINT_CLEANUP_UNVERIFIED", item.Role, captured)
 		}
 		if ctx.Err() != nil {
-			return unresolved("LINT_CANCELLED")
+			return captureFailure("LINT_CANCELLED", item.Role, captured)
 		}
 		if !d.now().Before(approved.expires) {
-			return unresolved("LINT_REVIEW_EXPIRED")
+			return captureFailure("LINT_REVIEW_EXPIRED", item.Role, captured)
 		}
 		if runErr != nil {
 			captured.capture.Status = ls.TimedOut
@@ -92,4 +92,12 @@ func evaluate(ctx context.Context, snapshot string, d dependencies) outcome {
 		}
 	}
 	return outcome{decision: ls.Classify(observations), observations: observations}
+}
+
+func captureFailure(reason string, role ls.Role, captured captureResult) outcome {
+	out := unresolved(reason)
+	if captured.facts != nil {
+		out.harness = failedHarness(role, captured)
+	}
+	return out
 }

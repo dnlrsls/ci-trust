@@ -128,7 +128,7 @@ func (d dockerWorkflow) load(ctx context.Context, a, i []byte) error {
 func (d dockerWorkflow) execute(ctx context.Context, p runner.Plan, a runner.Consent, source runner.Snapshot) runner.Result {
 	r, e := runner.NewLintOwned(d.docker, p, source)
 	if e != nil {
-		return runner.Result{Outcome: runner.Unverifiable, Reason: "lint runner unavailable"}
+		return runner.Result{Outcome: runner.Unverifiable, Reason: "lint runner unavailable", Facts: &runner.ExecutionFacts{Primary: "RUNNER_SETUP"}}
 	}
 	return r.Execute(ctx, p, a)
 }
@@ -196,10 +196,11 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 		return nil
 	}
 	d.capture = func(ctx context.Context, p plan, item ownedCase, binding string) captureResult {
-		failed := captureResult{capture: ls.ESLintCapture{Status: ls.Unavailable}}
+		failed := captureResult{capture: ls.ESLintCapture{Status: ls.Unavailable}, facts: &runner.ExecutionFacts{Primary: "CAPTURE_GUARD"}}
 		if !validReview() || ctx.Err() != nil || binding != p.digest() {
 			return failed
 		}
+		failed.facts.Primary = "RUNTIME_CREATION"
 		rt := first
 		first = nil
 		if item.Role != ls.Clean {
@@ -212,6 +213,7 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 		if rt == nil {
 			return failed
 		}
+		failed.facts.Primary = "ROLE_PLAN_OR_REVIEW"
 		role, e := runner.FixedLintPlan(snapshot, item.Role, binding)
 		if e != nil || !validReview() {
 			return failed
@@ -223,7 +225,7 @@ func evaluateGitHubWorkflow(ctx context.Context, snapshot string, r githubReview
 		if result.Outcome == runner.Completed {
 			status = ls.Completed
 		}
-		return captureResult{cleanupVerified: result.CleanupVerified, runtimeCode: runtimeFailureCode(result.Reason), capture: ls.ESLintCapture{Status: status, ExitCode: result.ExitCode, Stdout: []byte(result.Stdout), Stderr: []byte(result.Stderr)}}
+		return captureResult{facts: result.Facts, cleanupVerified: result.CleanupVerified, runtimeCode: runtimeFailureCode(result.Reason), capture: ls.ESLintCapture{Status: status, ExitCode: result.ExitCode, Stdout: []byte(result.Stdout), Stderr: []byte(result.Stderr)}}
 	}
 	out := evaluate(ctx, snapshot, d)
 	if changed {

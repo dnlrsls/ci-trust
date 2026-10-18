@@ -12,6 +12,7 @@ import (
 
 	"github.com/dnlrsls/ci-trust/internal/lintcatalog"
 	ls "github.com/dnlrsls/ci-trust/internal/lintsensitivity"
+	"github.com/dnlrsls/ci-trust/internal/runner"
 )
 
 // Catalog and dependency seams are private: input files/CLI arguments cannot
@@ -86,6 +87,7 @@ type approval struct {
 	expires time.Time
 }
 type captureResult struct {
+	facts           *runner.ExecutionFacts
 	capture         ls.ESLintCapture
 	cleanupVerified bool
 	runtimeCode     string
