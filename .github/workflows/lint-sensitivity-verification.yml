@@ -1,0 +1,131 @@
+name: Controlled owned lint sensitivity - compiled admission required
+
+'on':
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+  GOPROXY: https://proxy.golang.org
+  GOSUMDB: sum.golang.org
+  GOTELEMETRY: 'off'
+  GOENV: 'off'
+  GOWORK: 'off'
+  GOFLAGS: ''
+  GOAUTH: 'off'
+  GOVCS: '*:off'
+  CGO_ENABLED: '0'
+
+jobs:
+  plan:
+    if: >-
+      github.repository == 'dnlrsls/ci-trust' &&
+      github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      request: ${{ steps.plan.outputs.request }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Build only the fixed Go control from exact clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          state="$GITHUB_WORKSPACE/.git/lint-sensitivity"
+          mkdir -p "$state/tmp" "$state/cache" "$state/modcache"
+          export GOCACHE="$state/cache" GOMODCACHE="$state/modcache" TEMP="$state/tmp" TMP="$state/tmp" TMPDIR="$state/tmp"
+          timeout --signal=TERM --kill-after=10s 120s go mod download
+          go build -mod=readonly -trimpath -buildvcs=false -ldflags=-buildid= -o "$state/controlled-lint" ./internal/lintverify/cmd/controlled-lint
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Prepare non-authorizing plan - held profiles stop here
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          state="$GITHUB_WORKSPACE/.git/lint-sensitivity"
+          timeout --signal=TERM --kill-after=10s 600s "$state/controlled-lint" prepare > "$state/plan.json"
+          request="$(base64 -w0 "$state/plan.json")"
+          printf 'request=%s\n' "$request" >> "$GITHUB_OUTPUT"
+          binding="$(jq -r .binding_digest "$state/plan.json")"
+          {
+            printf '## Non-authorizing owned lint plan\n\n```json\n'
+            cat "$state/plan.json"
+            printf '\n```\nApprove only this exact plan with Environment comment: approve lint %s\n' "$binding"
+            printf '\nEnvironment approval alone is insufficient; compiled admission and API audit must also succeed.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    needs: plan
+    if: >-
+      github.repository == 'dnlrsls/ci-trust' &&
+      github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    environment:
+      name: ci-trust-controlled-verification
+      url: https://github.com/dnlrsls/ci-trust/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - name: Build the same fixed Go control after human Environment review
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          state="$GITHUB_WORKSPACE/.git/lint-sensitivity"
+          mkdir -p "$state/tmp" "$state/cache" "$state/modcache"
+          export GOCACHE="$state/cache" GOMODCACHE="$state/modcache" TEMP="$state/tmp" TMP="$state/tmp" TMPDIR="$state/tmp"
+          timeout --signal=TERM --kill-after=10s 120s go mod download
+          go build -mod=readonly -trimpath -buildvcs=false -ldflags=-buildid= -o "$state/controlled-lint" ./internal/lintverify/cmd/controlled-lint
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Verify exact lint review and fixed roles - no approval arguments
+        id: verify
+        env:
+          REQUEST: ${{ needs.plan.outputs.request }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          state="$GITHUB_WORKSPACE/.git/lint-sensitivity"
+          printf '%s' "$REQUEST" | base64 --decode > "$state/plan.json"
+          install -d -m 700 "$state/docker-config"
+          set +e
+          timeout --signal=TERM --kill-after=10s 600s "$state/controlled-lint" verify < "$state/plan.json" > "$state/report.json"
+          result=$?
+          set -e
+          test -z "$(git status --porcelain --untracked-files=all)"
+          exit "$result"
+      - name: Retain only owned plan and v1 report - never caches or credentials
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lint-sensitivity-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .git/lint-sensitivity/plan.json
+            .git/lint-sensitivity/report.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
