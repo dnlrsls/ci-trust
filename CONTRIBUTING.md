@@ -90,5 +90,7 @@ no runtime provisioning, automatic consent or unsandboxed fallback is authorized
 A later Gentleman-Programming/engram study is opt-in and revision-pinned, uses only
 generic adapters and makes no upstream writes. No such study has been run here.
 
-No license is selected. Do not grant a license or claim licensed release/distribution
-on the maintainer's behalf.
+CI Trust source is licensed under the [MIT License](LICENSE), selected explicitly
+by the maintainer. Preserve its copyright and permission notices. Third-party
+software keeps its own license terms. License selection does not authorize a
+version tag, release publication or controlled runtime execution.

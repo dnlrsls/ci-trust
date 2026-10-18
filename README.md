@@ -24,7 +24,8 @@ go build -o ci-trust ./cmd/ci-trust
 
 On Windows build `ci-trust.exe` and invoke `./ci-trust.exe`. The development version
 is `dev`; build-time `-ldflags "-X main.version=VALUE"` sets it explicitly.
-No installation or licensed release/distribution is claimed.
+No published release or installation channel is claimed. Source licensing is
+specified below.
 
 - `audit PATH` requires an explicit target and defaults to human output.
   `--platform linux`, `--platform windows`, and `--platform macos` may each be
@@ -54,6 +55,10 @@ independently accepted public cases passing on Linux, Windows and macOS at the
 exact tested revision. This is execution of CI Trust's own tests, not execution
 or enforcement evidence for the workflows it audits.
 
+The [0.1.0 release notes](docs/releases/0.1.0.md) are an **unreleased draft**, not
+a completed-MVP claim or authorization to publish. Issue #9 remains open pending
+real isolated lint sensitivity evidence and the other acceptance criteria.
+
 ## Read next
 
 1. [Reproduce the audit/report demo and understand its limits](docs/audit-demo.md)
@@ -80,8 +85,11 @@ scripts, hooks, actions or package managers, use credentials, fetch remote polic
 write hidden reports or fix files. User-directed stdout redirection is explicit.
 The issue tagline “Trust your CI. Verify everything.” remains an aspiration.
 
-## License status
+## License
 
-No license has been selected or granted by these documents. Public visibility
-is not an open-source license. Licensed release/distribution waits for an explicit
-maintainer license choice.
+CI Trust source is licensed under the [MIT License](LICENSE).
+Copyright (c) 2026 dnlrsls.
+
+Third-party software retains its own licenses; this grant does not relicense
+Go dependencies, Node.js, npm, ESLint or container base components. Selecting a
+source license does not publish a release, admit a runtime or complete issue #9.
