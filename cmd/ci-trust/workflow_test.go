@@ -8,16 +8,19 @@ import (
 
 type workflowUnreadInput struct{}
 
-func (workflowUnreadInput) Read([]byte) (int, error) { panic("request read before compiled gate") }
+func (workflowUnreadInput) Read([]byte) (int, error) {
+	panic("request read before trusted workflow context")
+}
 
-func TestWorkflowBridgeDeniesBeforeInput(t *testing.T) {
+func TestWorkflowBridgeDeniesUntrustedContextBeforeInput(t *testing.T) {
+	t.Setenv("GITHUB_ACTIONS", "")
 	root := t.TempDir()
 	counter := filepath.Join(root, "counter")
 	if err := os.WriteFile(counter, []byte("7\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	data, passed, err := verifyWorkflow(root, workflowUnreadInput{})
-	if err == nil || err.Error() != "NODE_SECURITY_HOLD" || len(data) != 0 || passed {
+	if err == nil || err.Error() != "lint workflow unavailable" || len(data) != 0 || passed {
 		t.Fatalf("data%q passed%v err%v", data, passed, err)
 	}
 	b, e := os.ReadFile(counter)

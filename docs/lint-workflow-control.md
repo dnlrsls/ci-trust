@@ -27,8 +27,9 @@ its existing verify operation remains compatible.
 Workspace/run/revision come from the fixed workflow context, not override flags.
 `verify` reads the bounded canonical request on stdin; it never imports tool
 observations, admission state or approval arguments. Its compiled gate precedes
-input/environment/service access. Current operations exit 1 with
-`controlled-lint: NODE_SECURITY_HOLD`; only help/argument checks remain available.
+input/environment/service access. The [source-admitted profile](lint-admission-policy.md)
+may prepare data only in the fixed trusted context; absent that context, operations
+exit 1 with `controlled-lint: workflow unavailable`. Admission is not exact review.
 
 Exit 0 means prepared data, or owned TOOL_FIXTURE sensitivity evidence for verify,
 never project configuration efficacy or historical CI enforcement. Verify emits
@@ -44,6 +45,7 @@ job after human review. The Go composition then independently authenticates that
 review before delivery/load/capture. Only plan/report JSON is retained for seven
 days; no runtime image, source, cache or credential is uploaded.
 
-The current gate fails planning, so verification cannot proceed. No workflow was
-dispatched or externally validated here; no Node, Docker or image was executed,
+Source admission permits non-authorizing planning in that fixed context, not
+execution without separate exact review. No workflow was dispatched or externally
+validated here; no Node, Docker or image was executed,
 no new candidate was fetched, and no Environment approval/settings were changed.

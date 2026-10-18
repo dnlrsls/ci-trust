@@ -39,11 +39,12 @@ specified below.
   human by default or `--format json`. It never applies changes; missing runtime
   and dependency preparation remain explicit preconditions, not invented setup.
 - `verify PATH --check lint` exposes [gated owned-fixture reporting](docs/lint-offline-integration.md).
-  Production remains UNVERIFIABLE: Node hold and unadmitted runtime block execution;
+  Ordinary host verification remains UNVERIFIABLE with no execution services;
   no project configuration/plugin is loaded and no real lint sensitivity is claimed.
   The explicit [workflow request mode](docs/lint-public-cli.md) connects only to
   the protected owned GitHub route, with strict sensitivity exit status; it is
-  still denied by compiled policy, never a host execution fallback.
+  limited to the [risk-accepted exact profile](docs/lint-admission-policy.md)
+  and separate authenticated review, never a host execution fallback.
 - Exit **0** means valid report/plan (including findings/FAIL/UNKNOWN), help or version;
   **1** means operational failure; **2** means invalid invocation. Report input is
   bounded to 8 MiB; interactive stdin is refused.
@@ -70,10 +71,11 @@ real isolated lint sensitivity evidence and the other acceptance criteria.
 
 ## Future work and safety
 
-`verify --check lint` now reports its closed execution gate; it does not run ESLint.
-Actual lint execution still requires a separately admitted runtime/image, exact
-human consent and bounded isolation. The smoke/proof backend does not authorize
-lint, and no trusted production lint catalog is available. There is no host-shell fallback.
+Ordinary `verify --check lint` remains cold; it does not run ESLint. The fixed
+lint catalog has source admission with documented residual-risk acceptance, not
+observed runtime compatibility or sensitivity. Actual execution still requires
+exact protected human consent and bounded isolation. Smoke/proof approval cannot
+authorize lint, and there is no host-shell fallback.
 Bootstrap is evidence-backed conditional dry-run recommendations only, never apply.
 The older [native audit receipt](docs/portable-ci.md) does not establish execution
 of this later bootstrap implementation; new source requires its own verification.

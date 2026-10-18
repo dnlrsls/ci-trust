@@ -1,4 +1,4 @@
-// Package lintcatalog owns one compiled lint identity and its closed gate.
+// Package lintcatalog owns admission for one fixed owned-fixture lint identity.
 // Metadata returned by Current is not approval or execution authority.
 package lintcatalog
 
@@ -9,8 +9,12 @@ type State struct {
 	SecurityHold, Admitted              bool
 }
 
-const securityHold = true
-const imageAdmitted = false
+// The maintainer accepted this exact profile's documented residual risk.
+// This is not a patched/safe Node claim or an exact runtime-plan approval.
+// Changing pinned bytes/profile requires a new disposition; see
+// docs/lint-admission-policy.md. No caller data can change these gates.
+const securityHold = false
+const imageAdmitted = true
 
 func Current() State {
 	return State{

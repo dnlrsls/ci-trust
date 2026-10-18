@@ -13,8 +13,8 @@ type Artifact struct {
 	ZipSHA256    string `json:"zip_sha256"`
 }
 
-// CurrentArtifact identifies the existing HELD preparation artifact. Selecting
-// this data cannot admit its old Node version or enable a network/load effect.
+// CurrentArtifact identifies the exact reviewed preparation artifact. Selecting
+// this data cannot grant admission, human consent or a network/load effect.
 func CurrentArtifact() Artifact {
 	return Artifact{
 		RepositoryID: 1420154884, RunID: 39016088214, Attempt: 1, ID: 12094603849, Size: 65571165,

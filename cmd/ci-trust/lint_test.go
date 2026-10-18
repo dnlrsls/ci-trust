@@ -12,9 +12,9 @@ import (
 	"github.com/dnlrsls/ci-trust/internal/evidence"
 )
 
-const verifyHelp = "ci-trust verify PATH --check lint [--format human|json] [--workflow-request -]\nOwned ESLint 10.12.0 / Node 24.22.0: currently UNVERIFIABLE (security hold; runtime not admitted).\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
+const verifyHelp = "ci-trust verify PATH --check lint [--format human|json] [--workflow-request -]\nOwned ESLint 10.12.0 / Node 24.22.0: source-admitted owned fixture profile; ordinary host verification remains UNVERIFIABLE.\nTOOL_FIXTURE only: CLEAN 0 -> FAULT 1 (no-debugger error at 1:1) -> RESTORED 0; exact human consent and preflight required; project configs/plugins are never loaded.\n"
 
-func expectedHeldEmptyReport(t *testing.T) ([]byte, string) {
+func expectedColdEmptyReport(t *testing.T) ([]byte, string) {
 	t.Helper()
 	sum := sha256.Sum256(nil)
 	scope := "Owned TOOL_FIXTURE sensitivity only; no project configuration efficacy, historical CI execution or enforcement proof."
@@ -25,11 +25,11 @@ func expectedHeldEmptyReport(t *testing.T) ([]byte, string) {
 	}
 	r["diagnostics"] = []any{
 		map[string]any{"id": evidence.StableID("diagnostic", "NO_SOURCE_ANCHOR", "", "0 0"), "code": "NO_SOURCE_ANCHOR", "message": "Static analysis could not resolve this input; no execution or enforcement is inferred.", "source": nil},
-		map[string]any{"id": evidence.StableID("diagnostic", "lint", "NODE_SECURITY_HOLD"), "code": "NODE_SECURITY_HOLD", "message": "Owned lint sensitivity: UNVERIFIABLE. " + scope, "source": nil},
+		map[string]any{"id": evidence.StableID("diagnostic", "lint", "LINT_EXECUTION_UNAVAILABLE"), "code": "LINT_EXECUTION_UNAVAILABLE", "message": "Owned lint sensitivity: UNVERIFIABLE. " + scope, "source": nil},
 	}
 	r["limitations"] = []string{
 		"Offline bounded configuration only. Historical execution, efficacy and required-check enforcement are UNKNOWN. Runner OS is not a cross-compilation target. Generic TEST intent is not unit, integration or E2E completeness.",
-		scope, "Prepared ESLint 10.12.0 / Node 24.22.0 candidate is held and not admitted; no live review or runtime channel is composed in production.",
+		scope,
 		"No genuine ESLint declaration source anchor was available; no lint CHECK or capability is fabricated.",
 	}
 	raw, _ := json.Marshal(r)
@@ -50,7 +50,7 @@ func expectedHeldEmptyReport(t *testing.T) ([]byte, string) {
 	return canonical, stderr
 }
 
-func TestPublicWorkflowRequestHeldAndNoEffects(t *testing.T) {
+func TestPublicWorkflowRequestUnauthenticatedAndNoEffects(t *testing.T) {
 	binary := buildPublicBinary(t)
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "counter"), []byte("7\n"), 0600); err != nil {
@@ -62,7 +62,7 @@ func TestPublicWorkflowRequestHeldAndNoEffects(t *testing.T) {
 	unchangedFixture(t, root, before)
 }
 
-func TestPublicVerifyHeldReportAndNoEffects(t *testing.T) {
+func TestPublicVerifyColdReportAndNoEffects(t *testing.T) {
 	binary := buildPublicBinary(t)
 	root := t.TempDir()
 	marker := filepath.Join(root, "counter")
@@ -70,7 +70,7 @@ func TestPublicVerifyHeldReportAndNoEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := fixtureBytes(t, root)
-	want, wantErr := expectedHeldEmptyReport(t)
+	want, wantErr := expectedColdEmptyReport(t)
 	code, out, stderr := invokePublic(t, binary, nil, "verify", root, "--check", "lint", "--format", "json")
 	assertPublic(t, code, out, stderr, 0, string(want), wantErr)
 	unchangedFixture(t, root, before)

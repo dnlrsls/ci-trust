@@ -14,6 +14,7 @@ func TestProductionGatePrecedesEveryExecutionDependency(t *testing.T) {
 	for _, reason := range []string{"NODE_SECURITY_HOLD", "LINT_IMAGE_NOT_ADMITTED"} {
 		t.Run(reason, func(t *testing.T) {
 			c := productionCatalog()
+			c.securityHold, c.admitted = true, false
 			if reason == "LINT_IMAGE_NOT_ADMITTED" {
 				c.securityHold = false
 			}

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/dnlrsls/ci-trust/internal/evidence"
@@ -32,6 +33,13 @@ func buildPublicBinary(t *testing.T) string {
 func invokePublic(t *testing.T, binary string, input []byte, args ...string) (int, []byte, []byte) {
 	t.Helper()
 	command := exec.Command(binary, args...)
+	command.Env = []string{}
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "GITHUB_") || strings.HasPrefix(entry, "DOCKER_") || strings.HasPrefix(entry, "GH_TOKEN=") {
+			continue
+		}
+		command.Env = append(command.Env, entry)
+	}
 	command.Stdin = bytes.NewReader(input)
 	var out, errOut bytes.Buffer
 	command.Stdout = &out

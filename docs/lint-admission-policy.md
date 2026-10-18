@@ -1,32 +1,33 @@
-# Proposed bounded lint admission review
+# Bounded lint admission disposition
 
-**Status: PROPOSED, NOT ADOPTED. The candidate is NOT ADMITTED.**
-This document prepares a security-policy amendment, not a security clearance,
-execution plan or permission to change the compiled catalog. The current
-`securityHold = true` and `imageAdmitted = false` remain unchanged.
+**Status: SOURCE ADMISSION RECORDED FOR THIS EXACT OWNED PROFILE.**
+On 2026-10-18 the maintainer explicitly accepted the documented residual HIGH,
+dependency and isolation risks for the candidate below. This source revision uses
+`securityHold = false` and `imageAdmitted = true`. It does not declare Node patched,
+safe or CVE-free, establish live compatibility, or approve a runtime plan.
 
-## Proposed change
+## Scoped risk decision
 
-Replace an automatic requirement to wait for a future Node release with a
-candidate-specific review of exposure, producer evidence, material uncertainties
-and an explicit maintainer risk disposition. This amendment is not active until
-separately adopted through a reviewed policy change. A corrected supported Node
-release remains the preferred route when its coverage is established.
+The maintainer selected candidate-specific risk acceptance rather than an
+automatic wait for a future Node release. Admission is limited to the pinned
+owned-fixture profile, relying on the recorded protected producer, immutable
+identities and consistency evidence, with the uncertainties below explicitly
+retained. A corrected supported Node release remains the preferred update when
+its coverage is established; changed bytes require a fresh disposition.
 
 The upcoming HIGH notice alone does not identify an exploitable path in these
 fixtures. Equally, missing CVE details and owned inputs do not demonstrate that
-the candidate is safe. Keep the execution block when the disposition is absent,
-rejected or insufficient. An identified affected feature or host-exposure path
-would strengthen the case to retain the hold and replace the candidate.
+the candidate is safe. An identified affected feature or host-exposure path calls
+for reassessment and withholding further approvals or revoking the compiled
+admission. Nothing automatically approves another candidate or scope.
 
-This is a proposed alternative to the corrected-candidate prerequisite in the
-[unreleased notes](releases/0.1.0.md), not a claim that prerequisite or either
-compiled gate has already changed. Node 24.22.0 is a profile choice, not an
+The [unreleased notes](releases/0.1.0.md) distinguish this source admission from
+remaining runtime/release evidence. Node 24.22.0 is a profile choice, not an
 issue #9 requirement. No alternative linter or narrower MVP is selected here.
 
 ## Exact candidate and scope
 
-| Identity | Reviewed proposal scope |
+| Identity | Admitted source scope |
 |---|---|
 | Runtime/tool | Node 24.22.0, npm 11.19.1, ESLint 10.12.0 |
 | Profile | `owned-eslint-v1`, Linux/amd64, owned TOOL_FIXTURE evidence only |
@@ -46,7 +47,7 @@ The [compiled descriptor](../internal/lintcatalog/artifact.go) is provenance dat
 not approval. Changing any pinned bytes or profile invalidates this review scope.
 
 Only the three fixed CLEAN, FAULT and RESTORED fixtures and the owned, hashed
-configuration are proposed. No repository JavaScript, executable project config,
+configuration are admitted. No repository JavaScript, executable project config,
 plugins, caller-selected commands, runtime installation or host fallback is
 allowed. The owned configuration is JavaScript, but it is not imported from the
 audited project. Source snapshot measurement does not grant target-code execution.
@@ -88,23 +89,25 @@ environment; the Node child does not inherit host credentials. The supported
 Linux daemon, exact image, ownership and I/O preflight must still fail closed.
 These are source-level controls, not claims of an already observed Node run.
 
-## Decision required before a later catalog change
+## Disposition and obligations
 
-A reviewer and maintainer must record a disposition for this exact candidate:
+The scoped acceptance relies on these distinctions; a future change must retain them:
 
 1. Identify the trusted producer, immutable inputs and integrity evidence. State
    which claims depend on the producer/npm and which were checked independently.
 2. Resolve or disposition material provenance, content, compatibility and security
    uncertainties. Do not infer harmlessness from the absence of an identified CVE.
-3. Explicitly accept or reject the residual risk for only the owned-fixture
-   profile. Approval to prepare this proposal is not that acceptance.
-4. Only after a supported disposition, prepare and independently verify any
-   security-relevant catalog change. Preserve smoke/#8 and all existing boundaries.
+3. The maintainer separately accepted residual risk for only this owned-fixture
+   profile after proposal review. Preparation consent alone was not acceptance.
+4. Independently verify security-relevant catalog changes. Preserve smoke/#8
+   and all existing boundaries; source acceptance is not an execution receipt.
 
-The current disposition is **PENDING**. This document does not record acceptance,
-clear the Node hold, admit the image, reorder `BlockedReason`, or add a policy
-override. Clearing the Node hold alone would still leave image admission closed.
-A label-only change is not evidence of progress in admission.
+The disposition accepts producer/npm supplier trust and unresolved vulnerability,
+dependency and live compatibility/isolation risks only within this profile.
+No independently reproduced upstream package audit or successful Node run is
+claimed. Producer metadata recording an earlier hold is historical data, not
+admission authority. `BlockedReason` and its revocation checks remain; there is
+no caller override, gate reordering or general Node permission.
 
 Compatibility observations can be gathered during a later explicitly approved
 bounded attempt; a successful real triad is not circularly required before the
@@ -113,8 +116,7 @@ unverified cleanup remain infrastructure/UNVERIFIABLE outcomes, not lint finding
 
 ## Execution remains a separate decision
 
-Even an adopted disposition and reviewed catalog change would not authorize a
-run. The [exact GitHub review](lint-github-consent.md) and
+Source admission does not authorize a run. The [exact GitHub review](lint-github-consent.md) and
 [protected workflow](lint-workflow-control.md) still require the owner's exact
 `approve lint <binding_digest>` and protected Environment review. No digest or
 approval is created by this document, a report, a source merge or an imported plan.

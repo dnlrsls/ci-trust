@@ -16,11 +16,12 @@ operational failures exit 1 without a report; invalid arguments exit 2. The
 trusted producer derives the exit disposition from its own result. It is not
 admission, consent or proof that project configuration or historical CI worked.
 
-Compiled `NODE_SECURITY_HOLD` still denies before request/environment/service
-access; the current image also remains unadmitted. Exact authenticated human
-review, fixed image/provenance, preflight, cleanup/source preservation and strict
-receipt classification remain owned by the existing engine. No pins, admission,
-Environment settings or security policy were changed by exposing this entry.
+The exact compiled profile has [bounded source admission](lint-admission-policy.md).
+An invalid trusted workflow context is rejected before request input; later exact
+authenticated human review still precedes delivery/runtime effects. Fixed
+image/provenance, preflight, cleanup/source preservation and strict receipt
+classification remain unchanged. Revoked admission still denies before services;
+no caller data changes it. Exposing this entry originally changed no pins or gates.
 
 The protected workflow prepares the fixed request with `controlled-lint prepare`,
 then builds and invokes the public CLI in request mode after human Environment

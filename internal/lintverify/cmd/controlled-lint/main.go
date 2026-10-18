@@ -21,7 +21,8 @@ Compiled admission and exact authenticated review are required before delivery/l
 Only fixed owned roles run; no target configuration, commands, image IDs or overrides.
 Exit 0: prepared data, or verify produced owned sensitive evidence (not project/CI PASS).
 Exit 1: held, unavailable, insensitive, unverifiable or operational failure; exit 2: invalid arguments.
-The current Node hold denies both operations; --help never accesses services.
+Only the exact source-admitted profile may proceed; trusted context and review are still required.
+--help never accesses services.
 `
 
 func main() {

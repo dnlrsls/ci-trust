@@ -44,7 +44,11 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 	}
 	snapshot := strings.TrimPrefix(r["snapshot"].(map[string]any)["id"].(string), "snapshot-")
 	source := lintAnchor(s)
-	out := unresolved(productionCatalog().blocked())
+	initialReason := productionCatalog().blocked()
+	if initialReason == "" {
+		initialReason = "LINT_EXECUTION_UNAVAILABLE"
+	}
+	out := unresolved(initialReason)
 	if unsupported(s) {
 		out = unresolved("UNSUPPORTED_LINT_CONFIGURATION")
 	} else if source != nil && invoke != nil {
@@ -65,7 +69,7 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 	add(r, "diagnostics", record{"id": evidence.StableID("diagnostic", "lint", reason), "code": reason, "message": "Owned lint sensitivity: " + string(out.decision.Outcome) + ". " + scopeLimit, "source": source})
 	add(r, "limitations", scopeLimit)
 	if productionCatalog().blocked() != "" {
-		add(r, "limitations", "Prepared ESLint 10.12.0 / Node 24.22.0 candidate is held and not admitted; no live review or runtime channel is composed in production.")
+		add(r, "limitations", "The compiled lint catalog blocks execution; this report cannot grant runtime admission.")
 	}
 	if source == nil {
 		add(r, "limitations", "No genuine ESLint declaration source anchor was available; no lint CHECK or capability is fabricated.")
@@ -91,7 +95,7 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 		} else {
 			id := evidence.StableID("evidence", check, reason)
 			refs = append(refs, id)
-			add(r, "evidence", record{"id": id, "check_id": check, "state": "UNVERIFIABLE", "scope": scope, "provenance": record{"kind": "DIAGNOSTIC", "adapter": "owned-eslint-v1", "basis": "UNRESOLVED", "sources": []any{}}, "execution": nil, "cause": nil, "limitations": []string{scopeLimit, "No admitted, authenticated lint execution is established."}})
+			add(r, "evidence", record{"id": id, "check_id": check, "state": "UNVERIFIABLE", "scope": scope, "provenance": record{"kind": "DIAGNOSTIC", "adapter": "owned-eslint-v1", "basis": "UNRESOLVED", "sources": []any{}}, "execution": nil, "cause": nil, "limitations": []string{scopeLimit, "No authenticated lint execution is established."}})
 		}
 		add(r, "inventory", record{"id": check, "kind": "CHECK", "name": "Owned ESLint fixture sensitivity (declaration anchor only)", "source": source, "evidence_refs": []string{}})
 		add(r, "capabilities", record{"id": evidence.StableID("capability", check, "efficacy"), "check_id": check, "dimension": "EFFICACY", "status": status, "scope": scope, "evidence_refs": refs, "limitations": []string{scopeLimit, "The source anchors the recognized declaration document, not execution or supported project configuration."}})

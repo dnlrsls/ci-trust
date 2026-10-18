@@ -16,7 +16,7 @@ produces an execution decision. The separate manual workflow source is
 `.github/workflows/lint-sensitivity-verification.yml`; the Environment remains
 `ci-trust-controlled-verification` without policy changes. Smoke approval is not
 lint consent. The runner, delivery/loader composition and workflow/control source
-are wired behind the closed gate. The Node hold remains active; preparing or
+remain protected after [source admission](lint-admission-policy.md); preparing or
 reading this document cannot start a process or approve an Environment.
 
 ## Separate read-only GitHub audit
@@ -28,7 +28,7 @@ It rechecks the active run and expiry before returning the private plan decision
 Smoke workflow identity, cases and approval syntax cannot authorize lint.
 
 The production wrapper checks the compiled gate before reading `GITHUB_TOKEN`,
-clock or network. The current hold therefore prevents all live requests. The
+clock or network. Scoped admission still requires exact authenticated review. The
 HTTPS client owns `api.github.com`, GET-only paths, no proxy/redirects, a ten-second
 audit deadline and one-MiB responses. Errors never include tokens or response text.
 Tests use fake HTTP metadata; no real GitHub approval/audit or execution is claimed.
@@ -36,7 +36,7 @@ No client code approves a review, edits Environment policy or dispatches a workf
 
 The canonical review now also binds `candidate_artifact`: compiled producer
 workflow/revision/run/attempt, repository/artifact identity, name, size and ZIP
-digest. This existing held candidate is not admitted by its provenance. See
+digest. This candidate's provenance data is not its separate source admission. See
 [the protected artifact contract](lint-artifact-delivery.md) for data-only ZIP
-checks and the closed authenticated delivery/load source. Actual interoperability
-and runtime admission remain unverified.
+checks and authenticated delivery/load source. Actual interoperability and
+execution remain unverified despite the recorded source admission.

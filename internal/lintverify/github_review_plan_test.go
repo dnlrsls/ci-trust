@@ -79,7 +79,7 @@ func TestGitHubReviewPlanOwnedInputsAndNoAuthority(t *testing.T) {
 	if _, e := makeGitHubReviewPlan(bad, r.Revision, 42, now); e == nil {
 		t.Fatal("unowned argv accepted")
 	}
-	if productionCatalog().blocked() != "NODE_SECURITY_HOLD" {
-		t.Fatal("planning granted admission")
+	if c := productionCatalog(); c.securityHold || !c.admitted || c.blocked() != "" {
+		t.Fatal("planning changed compiled scoped admission")
 	}
 }
