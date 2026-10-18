@@ -8,7 +8,7 @@ import (
 )
 
 func evaluate(ctx context.Context, snapshot string, d dependencies) outcome {
-	// Production is stopped here; no live authorizer or runtime is composed.
+	// Compiled denial precedes every workflow review or runtime seam.
 	if reason := d.catalog.blocked(); reason != "" {
 		return unresolved(reason)
 	}

@@ -19,8 +19,8 @@ type record = map[string]any
 
 const scopeLimit = "Owned TOOL_FIXTURE sensitivity only; no project configuration efficacy, historical CI execution or enforcement proof."
 
-// Scan reads bounded recognized files only. Production never composes a live
-// reviewer/runtime and its catalog remains held/unadmitted.
+// Scan is the cold local route: bounded recognized files, no live services.
+// The separate GitHub workflow composition remains behind the compiled gate.
 func Scan(root string) ([]byte, error) {
 	s := discovery.ReadSnapshot(root, discovery.Options{})
 	for _, d := range s.Diagnostics {
@@ -64,7 +64,9 @@ func analyze(s discovery.Snapshot, invoke func(string) outcome) ([]byte, error) 
 	reason := safeReason(out.decision.Reason)
 	add(r, "diagnostics", record{"id": evidence.StableID("diagnostic", "lint", reason), "code": reason, "message": "Owned lint sensitivity: " + string(out.decision.Outcome) + ". " + scopeLimit, "source": source})
 	add(r, "limitations", scopeLimit)
-	add(r, "limitations", "Prepared ESLint 10.12.0 / Node 24.22.0 candidate is held and not admitted; no live review or runtime channel is composed in production.")
+	if productionCatalog().blocked() != "" {
+		add(r, "limitations", "Prepared ESLint 10.12.0 / Node 24.22.0 candidate is held and not admitted; no live review or runtime channel is composed in production.")
+	}
 	if source == nil {
 		add(r, "limitations", "No genuine ESLint declaration source anchor was available; no lint CHECK or capability is fabricated.")
 	} else {
