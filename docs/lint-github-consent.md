@@ -11,10 +11,24 @@ plans and input over 16 KiB are rejected. The digest is an integrity/context
 binding, **not authentication, approval or image admission**. Anyone who can
 recompute a digest still needs the separate authenticated human review.
 
-This unit implements planning data only. It neither contacts GitHub nor produces
-an execution decision. The selected future workflow is
+The plan codec implements planning data only. It neither contacts GitHub nor
+produces an execution decision. The selected future workflow is
 `.github/workflows/lint-sensitivity-verification.yml`; the Environment remains
 `ci-trust-controlled-verification` without policy changes. Smoke approval is not
-lint consent. The real read-only audit, runner connection and workflow/control
-entrypoint are not yet composed. The Node security hold remains active; preparing
+lint consent. The runner connection and workflow/control entrypoint are not yet composed. The Node security hold remains active; preparing
 or reading this document cannot start a process or approve an Environment.
+
+## Separate read-only GitHub audit
+
+The private audit checks the fixed repository owner, lint workflow path and its
+resolved numeric identity, first-attempt/main/in-progress dispatch, unchanged
+protected Environment policy and one exact owner review: `approve lint <digest>`.
+It rechecks the active run and expiry before returning the private plan decision.
+Smoke workflow identity, cases and approval syntax cannot authorize lint.
+
+The production wrapper checks the compiled gate before reading `GITHUB_TOKEN`,
+clock or network. The current hold therefore prevents all live requests. The
+HTTPS client owns `api.github.com`, GET-only paths, no proxy/redirects, a ten-second
+audit deadline and one-MiB responses. Errors never include tokens or response text.
+Tests use fake HTTP metadata; no real GitHub approval/audit or execution is claimed.
+No approval/write endpoint, Environment policy edit or workflow dispatch exists here.
