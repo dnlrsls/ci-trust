@@ -98,6 +98,7 @@ func TestDiscoveryRepositoryBoundaryBootstrap(t *testing.T) {
 	}{
 		{"outside-destination", "checkout/.git", 1},
 		{"destination-excluded", ".github/.git", 0},
+		{"destination-itself-excluded", ".github/workflows/ci-trust.yml/.git", 0},
 		{"ordinary-omission-still-blocked", "node_modules/marker", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

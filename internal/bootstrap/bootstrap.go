@@ -63,7 +63,7 @@ func Analyze(s discovery.Snapshot, o Options) (Plan, error) {
 			d.Path != "" && d.Path != "." && path.Clean(d.Path) == d.Path &&
 			!path.IsAbs(d.Path) && !strings.HasPrefix(d.Path, "../") &&
 			!strings.ContainsAny(d.Path, "\\:")
-		if !excludedRepo || strings.HasPrefix(destination, d.Path+"/") {
+		if !excludedRepo || d.Path == destination || strings.HasPrefix(destination, d.Path+"/") {
 			partial = true
 			break
 		}

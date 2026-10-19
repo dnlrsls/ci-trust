@@ -91,7 +91,7 @@ byte. Limits and omissions remain visible through diagnostics.
 
 Descendant directories with a `.git` entry (file, directory or symlink) are
 omitted before their entries or manifests are read, with an UNKNOWN
-`EXCLUDED_DIRECTORY` diagnostic. Only confined entry metadata is inspected: marker
+`EXCLUDED_REPOSITORY` diagnostic. Only confined entry metadata is inspected: marker
 payloads and gitdir pointers are never read or followed, and Git is never run.
 Marker-inspection failures other than absence omit that directory with an UNKNOWN
 `REPOSITORY_MARKER_READ` diagnostic. The explicitly selected root remains admitted
