@@ -34,6 +34,7 @@ The protocol is `ci-trust-bootstrap-plan/v1`. Arrays are non-null and determinis
 | Only `go.mod` conventional suggestions | No command draft; conventions are not configured validation. |
 | Unsupported/unresolved inventory or missing platform policy | Limitations, not guessed commands or support. |
 | Partial/unsafe collection | No proposal: destination absence and source scope cannot be established. |
+| Intentionally excluded descendant repository | Root proposals remain conditional; no proposal if the excluded directory contains the destination. Other omissions still block. |
 | Equivalent configured linkage/coverage | No duplicate recommendation. |
 
 The producer selects existing audit findings; it does not establish a second coverage policy. Its templates are intentionally narrower than the analyzer's recognized language. Unknown configurations can therefore yield no recommendation. Even a resolved
