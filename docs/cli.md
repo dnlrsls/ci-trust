@@ -67,6 +67,20 @@ normal `verify` keep their previous exit meanings and do not consume workflow da
 See [public route limits](lint-public-cli.md). Only the exact source-admitted
 profile may proceed, and separate authenticated review remains mandatory.
 
+## Human review summary
+
+Human output with findings starts with a review summary grouped by `rule_id`
+and exact explanation, sorted by those two values. Counts are **record counts,
+not confirmed defects**: identical explanations across different scopes can share
+a summary row without establishing a shared root cause. Different explanations
+remain separate. Terminal controls and bidi characters are escaped.
+
+Every original full section follows unchanged, including scoped finding IDs,
+evidence, diagnostics and limitations. No evidence is merged and no UNKNOWN
+certainty is upgraded. Reports without findings keep their previous human bytes.
+JSON output, canonical ordering, schema, IDs, stderr and exit meanings are unchanged.
+The summary is display-only and does not authorize execution or confirm defects.
+
 ## Pinned text and rendering
 
 Root help is the invocation/help lines, bootstrap dry-run notice and verify gate/scope notice above followed by:
