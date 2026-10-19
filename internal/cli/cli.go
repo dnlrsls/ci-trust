@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -279,6 +280,35 @@ func safe(s string) string {
 
 func human(report map[string]json.RawMessage) []byte {
 	var b bytes.Buffer
+	// Summarize records only; the canonical scoped records below remain intact.
+	var findings []struct {
+		RuleID      string `json:"rule_id"`
+		Explanation string `json:"explanation"`
+	}
+	_ = json.Unmarshal(report["findings"], &findings)
+	if len(findings) > 0 {
+		type group struct {
+			ruleID, explanation string
+		}
+		counts := make(map[group]int)
+		for _, finding := range findings {
+			counts[group{finding.RuleID, finding.Explanation}]++
+		}
+		groups := make([]group, 0, len(counts))
+		for key := range counts {
+			groups = append(groups, key)
+		}
+		sort.Slice(groups, func(i, j int) bool {
+			if groups[i].ruleID != groups[j].ruleID {
+				return groups[i].ruleID < groups[j].ruleID
+			}
+			return groups[i].explanation < groups[j].explanation
+		})
+		b.WriteString("Review summary (record counts, not confirmed defects):\n")
+		for _, key := range groups {
+			fmt.Fprintf(&b, "  %s: %d record(s) — %s\n", safe(key.ruleID), counts[key], safe(key.explanation))
+		}
+	}
 	b.WriteString("CI Trust report (configuration is not execution or enforcement)\n")
 	for _, key := range []string{"schema_version", "snapshot"} {
 		fmt.Fprintf(&b, "%s: %s\n", key, safe(string(report[key])))

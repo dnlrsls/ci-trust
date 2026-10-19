@@ -132,8 +132,11 @@ func TestPublicBootstrapS10(t *testing.T) {
 		if err := json.Unmarshal(acceptedPlan.SourceReport, &report); err != nil {
 			t.Fatal(err)
 		}
-		want := "CI Trust bootstrap plan (dry-run only; no apply)\nConditional draft: not ready, executed, or enforced; review all preconditions and conflicts.\n" + string(acceptedJSON) + "Source uncertainty (configuration is not execution or enforcement):\n" + string(referenceHuman(t, report))
+		want := "CI Trust bootstrap plan (dry-run only; no apply)\nConditional draft: not ready, executed, or enforced; review all preconditions and conflicts.\n" + string(acceptedJSON) + "Source uncertainty (configuration is not execution or enforcement):\n" + reviewSummaryExpected(t, acceptedPlan.SourceReport)
 		assertPublic(t, code, out, errOut, 0, want, "")
+		if !bytes.HasSuffix(out, referenceHuman(t, report)) {
+			t.Fatal("summary changed the original source report body")
+		}
 		for _, token := range []string{"dry", ".github/workflows/ci-trust.yml", "precondition", "limitation"} {
 			if !strings.Contains(strings.ToLower(string(out)), token) {
 				t.Fatalf("human proposal omits %q: %q", token, out)

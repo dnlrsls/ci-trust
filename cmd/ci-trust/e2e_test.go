@@ -396,7 +396,10 @@ func TestPublicAdversarial(t *testing.T) {
 			assertPublic(t, c, o, e, code, string(out), string(stderr))
 			unchangedFixture(t, root, before)
 			hc, human, he := invokePublic(t, binary, nil, "audit", root, "--format", "human")
-			assertPublic(t, hc, human, he, 0, string(referenceHuman(t, r)), string(stderr))
+			assertPublic(t, hc, human, he, 0, reviewSummaryExpected(t, out), string(stderr))
+			if !bytes.HasSuffix(human, referenceHuman(t, r)) {
+				t.Fatal("summary changed the original raw human body")
+			}
 			unchangedFixture(t, root, before)
 			for _, args := range [][]string{{"audit", root, "--format", "xml"}, {"audit", root, "--unexpected"}} {
 				c, o, e = invokePublic(t, binary, nil, args...)
@@ -436,7 +439,7 @@ func TestPublicAdversarial(t *testing.T) {
 			if err != nil || !bytes.Equal(savedBytes, out) {
 				t.Fatal("saved report changed")
 			}
-			for name, data := range map[string][]byte{"audit.json": out, "audit.human": human, "stderr.txt": stderr} {
+			for name, data := range map[string][]byte{"audit.json": out, "audit.human": referenceHuman(t, r), "stderr.txt": stderr} {
 				captures = append(captures, capture{filepath.Join(base, name), data})
 			}
 		})
