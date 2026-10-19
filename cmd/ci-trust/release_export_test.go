@@ -35,7 +35,7 @@ func TestNativeArchiveExport(t *testing.T) {
 	if err := command.Run(); err != nil || stderr.Len() != 0 {
 		t.Fatalf("owned native test exit: %v stdout=%q stderr=%q", err, out.Bytes(), stderr.Bytes())
 	}
-	name := "ci-trust_0.1.0_" + runtime.GOOS + "_" + runtime.GOARCH + ".zip"
+	name := "ci-trust_0.1.1_" + runtime.GOOS + "_" + runtime.GOARCH + ".zip"
 	z, err := zip.OpenReader(filepath.Join(dir, name))
 	if err != nil {
 		t.Fatalf("native archive was not retained: %v", err)
@@ -66,7 +66,7 @@ func TestNativeArchiveExport(t *testing.T) {
 	if err := json.Unmarshal(files["RELEASE.json"], &meta); err != nil {
 		t.Fatal(err)
 	}
-	if meta["version"] != "0.1.0" || meta["goos"] != runtime.GOOS || meta["goarch"] != runtime.GOARCH || meta["sha256"] != fmt.Sprintf("%x", sha256.Sum256(files[binary])) || len(files[binary]) == 0 || modes[binary].Perm() != 0755 {
+	if meta["version"] != "0.1.1" || meta["goos"] != runtime.GOOS || meta["goarch"] != runtime.GOARCH || meta["sha256"] != fmt.Sprintf("%x", sha256.Sum256(files[binary])) || len(files[binary]) == 0 || modes[binary].Perm() != 0755 {
 		t.Fatal("native binary metadata/mode mismatch")
 	}
 	for _, p := range []string{"LICENSE", "THIRD_PARTY_NOTICES.md"} {
@@ -169,7 +169,7 @@ func exportNativeArchive(t *testing.T, dir, binaryName string, binary []byte, me
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	name := "ci-trust_0.1.0_" + runtime.GOOS + "_" + runtime.GOARCH + ".zip"
+	name := "ci-trust_0.1.1_" + runtime.GOOS + "_" + runtime.GOARCH + ".zip"
 	meta["archive"] = name
 	meta["archive_sha256"] = fmt.Sprintf("%x", sha256.Sum256(archive.Bytes()))
 	receipt, err := json.Marshal(meta)

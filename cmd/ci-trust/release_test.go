@@ -26,7 +26,7 @@ func TestVersionedBinary(t *testing.T) {
 		name += ".exe"
 	}
 	binary := filepath.Join(t.TempDir(), name)
-	command := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-buildid= -X main.version=0.1.0", "-o", binary, ".")
+	command := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-buildid= -X main.version=0.1.1", "-o", binary, ".")
 	fixed := map[string]string{
 		"CGO_ENABLED": "0", "GOENV": "off", "GOFLAGS": "", "GOWORK": "off",
 		"GOTOOLCHAIN": "local", "GOOS": runtime.GOOS, "GOARCH": runtime.GOARCH,
@@ -54,7 +54,7 @@ func TestVersionedBinary(t *testing.T) {
 	}
 	before := fixtureBytes(t, root)
 	code, out, errOut := invokePublic(t, binary, nil, "--version")
-	assertPublic(t, code, out, errOut, 0, "ci-trust \"0.1.0\"\n", "")
+	assertPublic(t, code, out, errOut, 0, "ci-trust \"0.1.1\"\n", "")
 	code, out, errOut = invokePublic(t, binary, nil, "--help")
 	assertPublic(t, code, out, errOut, 0, publicHelp, "")
 	for _, args := range [][]string{
@@ -84,7 +84,7 @@ func TestVersionedBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt, err := json.Marshal(map[string]string{
-		"version": "0.1.0", "go_version": runtime.Version(),
+		"version": "0.1.1", "go_version": runtime.Version(),
 		"goos": runtime.GOOS, "goarch": runtime.GOARCH,
 		"sha256": fmt.Sprintf("%x", sha256.Sum256(data)),
 	})
