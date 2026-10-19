@@ -1,4 +1,7 @@
 *.go text eol=lf
+
+# Distributed upstream license bytes must survive Windows checkouts unchanged.
+/LICENSES/** text eol=lf
 /internal/evidence/testdata/**/*.json text eol=lf
 
 # Public audit fixture bytes and source workflow must be identical on every host.
