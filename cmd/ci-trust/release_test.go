@@ -16,8 +16,11 @@ import (
 )
 
 // Existing native Go CI runs this build-metadata fixture, not an ESLint runtime.
-// Its digest lets a distributor match the exact tested bytes after cross-build.
+// CI retains these exact tested bytes; distribution never rebuilds them.
 func TestVersionedBinary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("native binary integration check")
+	}
 	name := "ci-trust"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
@@ -89,4 +92,11 @@ func TestVersionedBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Printf("CI_TRUST_VERSIONED_BINARY %s\n", receipt)
+	if dir := os.Getenv("CI_TRUST_NATIVE_ARTIFACT_DIR"); dir != "" {
+		var meta map[string]string
+		if err := json.Unmarshal(receipt, &meta); err != nil {
+			t.Fatal(err)
+		}
+		exportNativeArchive(t, dir, name, data, meta)
+	}
 }

@@ -31,6 +31,16 @@ jobs:
       - name: Record observed toolchain
         run: go version
       - name: Run owned unit and public CLI tests
+        env:
+          CI_TRUST_NATIVE_ARTIFACT_DIR: ${{ runner.temp }}/ci-trust-native
         run: go test -count=1 -v ./...
       - name: Vet owned source
         run: go vet ./...
+      - name: Retain native tested archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-trust-native-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-trust-native/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
