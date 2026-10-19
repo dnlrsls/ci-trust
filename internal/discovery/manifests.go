@@ -292,43 +292,6 @@ func safeCode(s string) string {
 	}
 	return "snapshot_unknown"
 }
-func moduleLiteral(b []byte) bool {
-	found := false
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.Trim(strings.SplitN(line, "//", 2)[0], " \t\r")
-		if line == "" {
-			continue
-		}
-		if !asciiLiteral(line) {
-			return false
-		}
-		f := strings.Fields(line)
-		if f[0] == "module" {
-			if found || len(f) != 2 || !literalToken.MatchString(f[1]) || !safePath(f[1]) || strings.HasPrefix(f[1], "-") {
-				return false
-			}
-			found = true
-			continue
-		}
-		// Other go.mod directives are not interpreted, but must not imitate executable text.
-		if len(f) != 2 {
-			return false
-		}
-		switch f[0] {
-		case "go":
-			if !goVersion.MatchString(f[1]) {
-				return false
-			}
-		case "toolchain":
-			if !toolchainVersion.MatchString(f[1]) {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return found
-}
 
 // Walk every JSON object to reject duplicates even in otherwise ignored fields.
 func strictObject(b []byte) (map[string]json.RawMessage, error) {
