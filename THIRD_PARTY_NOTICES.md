@@ -1,4 +1,4 @@
-# Third-party notices for CI Trust 0.1.0
+# Third-party notices for CI Trust
 
 CI Trust source is MIT licensed; see `LICENSE`. The Go binaries also contain
 third-party software under its own terms. Preserve this file and `LICENSES/`

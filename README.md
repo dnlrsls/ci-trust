@@ -25,7 +25,7 @@ go build -o ci-trust ./cmd/ci-trust
 On Windows build `ci-trust.exe` and invoke `./ci-trust.exe`. The development version
 is `dev`; build-time `-ldflags "-X main.version=VALUE"` sets it explicitly.
 Versioned archives and `SHA256SUMS` are published on the
-[v0.1.0 release page](https://github.com/dnlrsls/ci-trust/releases/tag/v0.1.0).
+[GitHub releases page](https://github.com/dnlrsls/ci-trust/releases).
 Choose the listed OS/architecture, verify the archive checksum, extract it and
 run `ci-trust --version` (`ci-trust.exe` on Windows). Archives include the source
 license, third-party notices and license texts; no Node/Docker image is bundled.
@@ -53,7 +53,7 @@ Build from source if an archive for your architecture is not listed.
   **1** means operational failure; **2** means invalid invocation. Report input is
   bounded to 8 MiB; interactive stdin is refused.
 
-**v0.1.0 scope: offline MVP — audit, report and conditional bootstrap dry-run.**
+**Release scope: offline MVP — audit, report and conditional bootstrap dry-run.**
 Controlled lint execution is experimental and outside this release's acceptance.
 The
 [observed demo](docs/audit-demo.md) records input immutability, report parity and a
@@ -62,8 +62,9 @@ independently accepted public cases passing on Linux, Windows and macOS at the
 exact tested revision. This is execution of CI Trust's own tests, not execution
 or enforcement evidence for the workflows it audits.
 
-The [0.1.0 release notes](docs/releases/0.1.0.md) define this intentionally
-narrowed first release. [Issue #9](https://github.com/dnlrsls/ci-trust/issues/9)
+The [0.1.1 release notes](docs/releases/0.1.1.md) describe repository boundaries
+and lossless human summaries; the [first release notes](docs/releases/0.1.0.md)
+record the original offline scope. [Issue #9](https://github.com/dnlrsls/ci-trust/issues/9)
 remains open for a later execution-verification stage. No real isolated ESLint
 sensitivity, project efficacy, historical CI execution or enforcement is claimed.
 
