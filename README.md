@@ -8,6 +8,23 @@ and explains evidence-backed configured gaps. Configuration is not observed
 execution, validator efficacy or required-check enforcement; those remain UNKNOWN
 without separate evidence. There is no aggregate green trust score.
 
+## Start here: download → demo → limits
+
+1. **Download** a native archive for your listed OS/architecture from
+   [GitHub releases](https://github.com/dnlrsls/ci-trust/releases), verify it
+   against `SHA256SUMS`, extract it and run `ci-trust --version`
+   (`ci-trust.exe` on Windows). No Go or Node installation is needed for the
+   downloaded binary. Archives are unsigned and not notarized.
+2. **Try the before/after demo:** [see two configured platform gaps disappear
+   without running CI](docs/audit-before-after-v0.1.1.md). It uses fresh copies
+   of an existing fixture, not your project's tests or scripts.
+3. **Read the limits:** the [CLI contract](docs/cli.md) explains why exit 0 can
+   include findings and UNKNOWN. Configured paths are not executed tests,
+   validator efficacy or required-check enforcement.
+
+Building from source is optional; use it if no archive for your architecture is
+listed. Existing releases and their checksums remain the download authority.
+
 ## Build and use
 
 Requires Go 1.26; dependencies are pinned in go.mod/go.sum. An initial dependency
@@ -70,7 +87,8 @@ sensitivity, project efficacy, historical CI execution or enforcement is claimed
 
 ## Read next
 
-1. [Reproduce the audit/report demo and understand its limits](docs/audit-demo.md)
+1. [Try the v0.1.1 before/after demo](docs/audit-before-after-v0.1.1.md), or read
+   the [historical audit/report observations](docs/audit-demo.md)
 2. [Exact CLI options, rendering and errors](docs/cli.md)
 3. [Architecture and support boundaries](docs/architecture.md)
 4. [Evidence schema](docs/evidence-contract.md) and [semantics](docs/evidence-semantics.md)
