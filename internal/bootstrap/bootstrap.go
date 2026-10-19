@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"encoding/json"
 	"errors"
+	"path"
 	"sort"
 	"strings"
 
@@ -54,7 +55,20 @@ func Analyze(s discovery.Snapshot, o Options) (Plan, error) {
 	if err := json.Unmarshal(raw, &report); err != nil {
 		return Plan{}, err
 	}
-	if len(s.Diagnostics) > 0 || len(s.Limitations) > 0 {
+	partial := len(s.Limitations) > 0
+	for _, d := range s.Diagnostics {
+		// An intentional descendant boundary is outside root authority, not a
+		// failed root read. It still blocks a draft whose destination it hides.
+		excludedRepo := d.Code == "EXCLUDED_REPOSITORY" && d.State == "UNKNOWN" &&
+			d.Path != "" && d.Path != "." && path.Clean(d.Path) == d.Path &&
+			!path.IsAbs(d.Path) && !strings.HasPrefix(d.Path, "../") &&
+			!strings.ContainsAny(d.Path, "\\:")
+		if !excludedRepo || strings.HasPrefix(destination, d.Path+"/") {
+			partial = true
+			break
+		}
+	}
+	if partial {
 		p.Limitations = append(p.Limitations, "Partial or unsafe collection: destination and source scope are unresolved; no draft proposed.")
 		return p, nil
 	}
@@ -91,9 +105,13 @@ func Analyze(s discovery.Snapshot, o Options) (Plan, error) {
 	}
 	inv := discovery.Analyze(s, discovery.Options{})
 	graph := workflows.Analyze(s, inv, workflows.Options{})
-	if len(inv.Diagnostics) > 0 {
-		p.Limitations = append(p.Limitations, "Unresolved inventory: no command draft proposed.")
-		return p, nil
+	for _, d := range inv.Diagnostics {
+		// The reader boundary was validated above; keep it in the source report,
+		// while inventory's own unresolved declarations still suppress drafts.
+		if d.Code != "EXCLUDED_REPOSITORY" {
+			p.Limitations = append(p.Limitations, "Unresolved inventory: no command draft proposed.")
+			return p, nil
+		}
 	}
 	roots := map[string]string{}
 	for _, r := range inv.Roots {

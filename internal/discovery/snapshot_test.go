@@ -40,6 +40,46 @@ func supportedSnapshotHost(t *testing.T) {
 	}
 }
 
+func TestSnapshotRepositoryBoundary(t *testing.T) {
+	supportedSnapshotHost(t)
+	for _, marker := range []string{"file", "directory", "symlink"} {
+		t.Run(marker, func(t *testing.T) {
+			root := t.TempDir()
+			snapshotFixture(t, root, ".git", "gitdir: nonexistent\n")
+			snapshotFixture(t, root, "arbitrary/checkout/package.json", `{"scripts":{"test":"touch sentinel"}}`)
+			snapshotFixture(t, root, "packages/regular/go.mod", "module regular")
+			p := filepath.Join(root, "arbitrary", "checkout", ".git")
+			switch marker {
+			case "file":
+				snapshotFixture(t, root, "arbitrary/checkout/.git", strings.Repeat("hostile payload\n", 100))
+			case "directory":
+				snapshotFixture(t, root, "arbitrary/checkout/.git/config", "inert")
+			case "symlink":
+				if err := os.Symlink("nonexistent", p); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+			}
+			want := emptySnapshot()
+			want.Documents = []Document{{Path: "packages/regular/go.mod", Content: []byte("module regular")}}
+			want.Diagnostics = []Diagnostic{snapshotDiagnostic("EXCLUDED_REPOSITORY", "arbitrary/checkout", "Nested repository excluded from selected root.")}
+			// The marker and descendant entries must not consume read/enumeration budgets.
+			checkSnapshot(t, ReadSnapshot(root, Options{MaxEntries: 7, MaxTotalBytes: 14}), want)
+			if _, err := os.Stat(filepath.Join(root, "sentinel")); !os.IsNotExist(err) {
+				t.Fatal("payload executed")
+			}
+			b, err := os.ReadFile(filepath.Join(root, "packages/regular/go.mod"))
+			if err != nil || string(b) != "module regular" {
+				t.Fatal("input changed")
+			}
+			// Explicitly selecting the child admits its own manifest despite its marker.
+			child := ReadSnapshot(filepath.Dir(p), Options{})
+			if len(child.Documents) != 1 || child.Documents[0].Path != "package.json" {
+				t.Fatalf("selected root omitted: %#v", child)
+			}
+		})
+	}
+}
+
 func TestSnapshotInventory(t *testing.T) {
 	supportedSnapshotHost(t)
 	root := t.TempDir()

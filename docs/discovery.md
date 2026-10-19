@@ -89,6 +89,17 @@ within the remaining entry budget is omitted in full, avoiding an arbitrary
 filesystem-order-dependent subset. Read overflow detection may consume one extra
 byte. Limits and omissions remain visible through diagnostics.
 
+Descendant directories with a `.git` entry (file, directory or symlink) are
+omitted before their entries or manifests are read, with an UNKNOWN
+`EXCLUDED_DIRECTORY` diagnostic. Only confined entry metadata is inspected: marker
+payloads and gitdir pointers are never read or followed, and Git is never run.
+Marker-inspection failures other than absence omit that directory with an UNKNOWN
+`REPOSITORY_MARKER_READ` diagnostic. The explicitly selected root remains admitted
+even with its own marker; ordinary nested packages without markers remain included,
+regardless of their directory names. Entries inside omitted repositories do not
+consume enumeration or file-read budgets; their parent entries still count.
+This marker boundary does not identify every possible independently owned tree.
+
 Excluded directories: `.git`, `node_modules`, `vendor`, `.venv`, `dist`, `build`
 and `.next`. Symlinks and non-regular entries are skipped. Go `os.Root` confines
 file opens; unsupported containment hosts fail closed. It does not prohibit

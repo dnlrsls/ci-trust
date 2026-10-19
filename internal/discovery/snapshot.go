@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path"
@@ -59,6 +60,18 @@ func ReadSnapshot(rootPath string, options Options) Snapshot {
 		if exhausted {
 			add("ENTRY_LIMIT", dir, "Directory omitted: entry limit reached.")
 			return
+		}
+		if dir != "." {
+			// Inspect only the entry: gitdir payloads and symlink targets are not inputs.
+			_, err := root.Lstat(path.Join(dir, ".git"))
+			if err == nil {
+				add("EXCLUDED_REPOSITORY", dir, "Nested repository excluded from selected root.")
+				return
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				add("REPOSITORY_MARKER_READ", dir, "Directory omitted: repository marker cannot be inspected.")
+				return
+			}
 		}
 		f, err := root.Open(dir)
 		if err != nil {
