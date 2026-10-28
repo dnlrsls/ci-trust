@@ -385,9 +385,11 @@ func resolveScript(name string, scripts map[string]string, p string, active map[
 		if len(fields) == 0 {
 			return nil, trace, "unsupported_script"
 		}
-		for _, field := range fields {
-			if !literalToken.MatchString(field) && field != "-count=1" {
-				return nil, trace, "unsupported_script"
+		if fields[0] != "node" || !nodeTestLiteral(fields) {
+			for _, field := range fields {
+				if !literalToken.MatchString(field) && field != "-count=1" {
+					return nil, trace, "unsupported_script"
+				}
 			}
 		}
 		if fields[0] == "npm" {
@@ -454,11 +456,10 @@ func leafKind(f []string) string {
 		kind = "test"
 		flags["--runInBand"] = true
 	case "node":
-		if len(f) < 2 || f[1] != "--test" {
-			return ""
+		if nodeTestLiteral(f) {
+			return "test"
 		}
-		start = 2
-		kind = "test"
+		return ""
 	default:
 		return ""
 	}
