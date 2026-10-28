@@ -56,6 +56,10 @@ func Analyze(s discovery.Snapshot, o Options) (Plan, error) {
 		return Plan{}, err
 	}
 	partial := len(s.Limitations) > 0
+	blockers := map[string]bool{}
+	if partial {
+		blockers["Collection blocker SNAPSHOT_LIMITATION at [unavailable]: Snapshot collection is limited; review the collection limits before requesting a draft."] = true
+	}
 	for _, d := range s.Diagnostics {
 		// An intentional descendant boundary is outside root authority, not a
 		// failed root read. It still blocks a draft whose destination it hides.
@@ -65,11 +69,17 @@ func Analyze(s discovery.Snapshot, o Options) (Plan, error) {
 			!strings.ContainsAny(d.Path, "\\:")
 		if !excludedRepo || d.Path == destination || strings.HasPrefix(destination, d.Path+"/") {
 			partial = true
-			break
+			blockers[collectionBlocker(d)] = true
 		}
 	}
 	if partial {
 		p.Limitations = append(p.Limitations, "Partial or unsafe collection: destination and source scope are unresolved; no draft proposed.")
+		ordered := make([]string, 0, len(blockers))
+		for explanation := range blockers {
+			ordered = append(ordered, explanation)
+		}
+		sort.Strings(ordered)
+		p.Limitations = append(p.Limitations, ordered...)
 		return p, nil
 	}
 	declared := true

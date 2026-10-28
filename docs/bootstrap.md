@@ -42,6 +42,23 @@ command is not proposed when its actual execution context or decisive definition
 chain cannot be represented faithfully by existing report evidence. Conditional
 runtime/dependency preparation does not relax these command/provenance boundaries. Separate isolated second-pass fixtures check idempotence without modifying the original source.
 
+## Understand a blocked plan
+
+A partial/unsafe collection still produces **no draft**. Its existing generic
+limitation now includes additional `Collection blocker CODE at "relative/path":
+...` explanations in both human and JSON output. Each identifies the original
+bounded discovery reason and a next review action; it is not permission to follow
+links, remove exclusions, raise limits or apply changes automatically.
+
+Only clean, printable relative paths of at most 512 bytes are shown (Unicode is
+ASCII-escaped). Missing, absolute, traversing, control-containing or otherwise
+unsafe paths become `[unavailable]`. Unknown codes use `UNRESOLVED_COLLECTION`;
+raw diagnostic messages and snapshot-limitation payloads are never copied.
+Explanations are sorted and deduplicated; the source report, no-draft guard,
+exit status and plan protocol are unchanged. A missing platform declaration is a
+separate prerequisite: supplying `--platform` does not cure an unresolved
+collection boundary. Choose support targets intentionally, not from runner guesses.
+
 ## Conditional means not ready to run
 
 The selected policy allows a **conditional draft**, not invented runtime preparation. Reviewers must supply and verify runtime availability, compatible versions, dependencies and tools on every proposed runner. There is no inferred setup action, package installation, copied Go version or claim that the draft will pass. Invoking an npm script can run repository-controlled lifecycle behavior; manually review all script effects before use.
